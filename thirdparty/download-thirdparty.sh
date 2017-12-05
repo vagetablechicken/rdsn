@@ -58,9 +58,9 @@ exit_if_fail $?
 check_and_download "googletest-1.8.0.tar.gz" "https://codeload.github.com/google/googletest/tar.gz/release-1.8.0"
 exit_if_fail $?
 
-# protobuf
-check_and_download "protobuf-v3.5.0.tar.gz" "https://codeload.github.com/google/protobuf/tar.gz/v3.5.0"
-exit_if_fail $?
+## protobuf
+#check_and_download "protobuf-v3.5.0.tar.gz" "https://codeload.github.com/google/protobuf/tar.gz/v3.5.0"
+#exit_if_fail $?
 
 #rapidjson
 check_and_download "rapidjson-v1.1.0.tar.gz" "https://codeload.github.com/Tencent/rapidjson/tar.gz/v1.1.0"
