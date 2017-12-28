@@ -124,7 +124,7 @@ TEST_F(FDSClientTest, test_basic_operation)
 
     std::shared_ptr<fds_service> s = std::make_shared<fds_service>();
     // server, access-key, access-secret, bucket_name
-    std::vector<std::string> args = {"cnbj1.fds.api.xiaomi.com",
+    std::vector<std::string> args = {"cnbj1-fds.api.xiaomi.net",
                                      "AK2TBDCN7PIPNKCWIX",
                                      "Fi1N30xEKZz0iLKflt0rGIZvFRtExx/ziDIC2gVy",
                                      "sunweijie-pegasus-test-bucket"};
