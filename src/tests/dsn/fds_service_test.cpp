@@ -724,7 +724,7 @@ TEST_F(FDSClientTest, test_concurrent_upload_download)
     }
 
     std::shared_ptr<fds_service> _service = std::make_shared<fds_service>();
-    std::vector<std::string> init_str = {"cnbj1.fds.api.xiaomi.com",
+    std::vector<std::string> init_str = {"cnbj1-fds.api.xiaomi.net",
                                          "AK2TBDCN7PIPNKCWIX",
                                          "Fi1N30xEKZz0iLKflt0rGIZvFRtExx/ziDIC2gVy",
                                          "sunweijie-pegasus-test-bucket"};
@@ -872,7 +872,7 @@ TEST_F(FDSClientTest, test_concurrent_upload_download)
 //    }
 //
 //    std::shared_ptr<fds_service> _service = std::make_shared<fds_service>();
-//    std::vector<std::string> init_str = {"cnbj1.fds.api.xiaomi.com",
+//    std::vector<std::string> init_str = {"cnbj1-fds.api.xiaomi.net",
 //                                         "AK2TBDCN7PIPNKCWIX",
 //                                         "Fi1N30xEKZz0iLKflt0rGIZvFRtExx/ziDIC2gVy",
 //                                         "sunweijie-pegasus-test-bucket"};
