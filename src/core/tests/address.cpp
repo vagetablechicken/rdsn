@@ -276,3 +276,13 @@ TEST(core, dsn_group)
 
     dsn_group_destroy(g);
 }
+
+TEST(core, uri_to_cluster_id)
+{
+    ASSERT_EQ(dsn_uri_to_cluster_id("dsn://duplication_cluster"), 3);
+    ASSERT_EQ(dsn_uri_to_cluster_id("duplication_cluster"), -2);
+    ASSERT_EQ(dsn_uri_to_cluster_id("dsn://unknown_cluster"), -2);
+    ASSERT_EQ(dsn_uri_to_cluster_id("http://localhost:8080"), -1);
+    ASSERT_EQ(dsn_uri_to_cluster_id(" http://localhost:8080"), -2);
+    ASSERT_EQ(dsn_uri_to_cluster_id(""), -2);
+}

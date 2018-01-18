@@ -42,7 +42,8 @@
 
 namespace dsn {
 namespace dist {
-// path: /, /n1/n2, /n1/n2/, /n2/n2/n3
+
+// TODO(wutao1): what if the given s is "/path/////"? only 1 of the ending slashes will be removed.
 std::string meta_state_service_simple::normalize_path(const std::string &s)
 {
     if (s.empty() || s[0] != '/')
@@ -163,7 +164,9 @@ error_code meta_state_service_simple::delete_node_internal(const std::string &no
         auto &node_pair = delete_stack.top();
         if (node_pair.node->children.end() == node_pair.next_child_to_delete) {
             auto delnum = _quick_map.erase(node_pair.path);
-            dassert(delnum == 1, "inconsistent state between quick map and tree");
+            dassert(delnum == 1,
+                    "inconsistent state between quick map and tree (path: %s)",
+                    node_pair.path.c_str());
             delete node_pair.node;
             delete_stack.pop();
         } else {
@@ -230,6 +233,7 @@ error_code meta_state_service_simple::apply_transaction(
     return ERR_OK;
 }
 
+// Restore data from WAL file.
 error_code meta_state_service_simple::initialize(const std::vector<std::string> &args)
 {
     const char *work_dir = args.empty() ? dsn_get_app_data_dir() : args[0].c_str();

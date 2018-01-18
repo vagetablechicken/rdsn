@@ -144,6 +144,13 @@ private:
     void on_report_restore_status(dsn_message_t req);
     void on_query_restore_status(dsn_message_t req);
 
+    // duplication
+    void on_add_duplication(duplication_add_rpc rpc);
+    void on_change_duplication_status(duplication_status_change_rpc rpc);
+    void on_query_duplication_info(duplication_query_rpc rpc);
+    void on_duplication_sync(duplication_sync_rpc rpc);
+    void register_duplication_rpc_handlers();
+
     // common routines
     // ret:
     //   1. the meta is leader
@@ -157,6 +164,7 @@ private:
     friend class replication_checker;
     friend class test::test_checker;
     friend class ::meta_service_test_app;
+    friend class server_state_duplication_test;
 
     replication_options _opts;
     meta_options _meta_opts;

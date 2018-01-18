@@ -42,6 +42,7 @@
 
 #include <dsn/cpp/serverlet.h>
 #include <dsn/cpp/json_helper.h>
+#include <dsn/dist/replication/duplication_backlog_handler.h>
 #include <dsn/dist/replication/replication.types.h>
 #include <dsn/dist/replication/replication_other_types.h>
 #include <dsn/dist/replication/replication.codes.h>
@@ -194,7 +195,7 @@ public:
     // must be thread safe
     //
     virtual ::dsn::error_code copy_checkpoint_to_dir(const char *checkpoint_dir,
-                                             /*output*/ int64_t *last_decree) = 0;
+                                                     /*output*/ int64_t *last_decree) = 0;
 
     //
     // Query methods.
@@ -209,6 +210,15 @@ public:
                                           int64_t timstamp,
                                           dsn_message_t *requests,
                                           int request_length);
+
+    duplication_backlog_handler *get_duplication_backlog_handler() const
+    {
+        return _duplication_backlog_handler.get();
+    }
+    void set_duplication_backlog_handler(duplication_backlog_handler *dbh)
+    {
+        _duplication_backlog_handler.reset(dbh);
+    }
 
 public:
     //
@@ -243,12 +253,14 @@ private:
     void install_perf_counters();
 
 protected:
-    std::string _dir_data;  // ${replica_dir}/data
-    std::string _dir_learn; // ${replica_dir}/learn
+    std::string _dir_data;   // ${replica_dir}/data
+    std::string _dir_learn;  // ${replica_dir}/learn
     std::string _dir_backup; // ${replica_dir}/backup
     replica *_replica;
     std::atomic<int64_t> _last_committed_decree;
     replica_init_info _info;
+
+    std::unique_ptr<duplication_backlog_handler> _duplication_backlog_handler;
 
     explicit replication_app_base(::dsn::replication::replica *replica);
 };

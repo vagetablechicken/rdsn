@@ -295,6 +295,7 @@ private:
     friend class ::dsn::replication::test::test_checker;
     friend class ::dsn::replication::mutation_queue;
     friend class ::dsn::replication::replica_stub;
+    friend class mock_replica;
 
     // replica configuration, updated by update_local_configuration ONLY
     replica_configuration _config;
@@ -349,6 +350,10 @@ private:
 
     bool _inactive_is_transient; // upgrade to P/S is allowed only iff true
     bool _is_initializing;       // when initializing, switching to primary need to update ballot
+
+    // duplication
+    class duplication_impl;
+    std::unique_ptr<duplication_impl> _duplication_impl;
 
     // perf counters
     perf_counter_wrapper _counter_private_log_size;

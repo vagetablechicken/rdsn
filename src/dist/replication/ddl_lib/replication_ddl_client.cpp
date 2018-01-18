@@ -40,10 +40,12 @@
 #include <iomanip>
 
 #include <boost/lexical_cast.hpp>
+#include <fmt/format.h>
 
 #include <sys/socket.h>
 #include <netdb.h>
 #include <arpa/inet.h>
+#include <dsn/dist/replication/duplication_common.h>
 
 namespace dsn {
 namespace replication {
@@ -1309,6 +1311,134 @@ dsn::error_code replication_ddl_client::query_restore(int32_t restore_app_id, bo
                   << std::endl;
     }
     return ERR_OK;
+}
+
+dsn::error_code replication_ddl_client::add_dup(const std::string &app_name,
+                                                const std::string &remote_address)
+{
+    auto req = std::make_shared<duplication_add_request>();
+
+    req->app_name = app_name;
+    req->remote_cluster_address = remote_address;
+
+    auto resp_task = request_meta<duplication_add_request>(RPC_CM_ADD_DUPLICATION, req);
+    resp_task->wait();
+    if (resp_task->error() != dsn::ERR_OK) {
+        fmt::print("failed to add duplication: [app_name: {}, remote_cluster: {}] "
+                   "unable to send rpc to server: {}\n",
+                   app_name,
+                   remote_address,
+                   resp_task->error().to_string());
+        return resp_task->error();
+    }
+
+    dsn::replication::duplication_add_response resp;
+    ::dsn::unmarshall(resp_task->response(), resp);
+    if (resp.err != dsn::ERR_OK) {
+        fmt::print("failed to add duplication: [app_name: {}, remote_cluster: {}] "
+                   "server responded: {}\n",
+                   app_name,
+                   remote_address,
+                   resp.err.to_string());
+        return resp.err;
+    }
+
+    fmt::print("Success for adding duplication [appid: {}, dupid: {}]\n", resp.appid, resp.dupid);
+    return dsn::ERR_OK;
+}
+
+dsn::error_code replication_ddl_client::change_dup_status(const std::string &app_name,
+                                                          int dupid,
+                                                          duplication_status::type status)
+{
+    auto req = std::make_shared<duplication_status_change_request>();
+
+    req->app_name = app_name;
+    req->dupid = dupid;
+    req->status = status;
+
+    auto resp_task =
+        request_meta<duplication_status_change_request>(RPC_CM_CHANGE_DUPLICATION_STATUS, req);
+    resp_task->wait();
+    if (resp_task->error() != dsn::ERR_OK) {
+        fmt::print("failed to change duplication status: [app_name: {}, dupid: {}, status: {}] "
+                   "unable to send rpc to server: %s\n",
+                   app_name,
+                   dupid,
+                   duplication_status_to_string(status),
+                   resp_task->error().to_string());
+        return resp_task->error();
+    }
+
+    dsn::replication::duplication_status_change_response resp;
+    ::dsn::unmarshall(resp_task->response(), resp);
+    if (resp.err != dsn::ERR_OK) {
+        fmt::print("failed to change duplication status: [app_name: {}, dupid: {}, status: {}] "
+                   "server responded: {}\n",
+                   app_name,
+                   dupid,
+                   duplication_status_to_string(status),
+                   resp.err.to_string());
+        return resp.err;
+    }
+
+    return dsn::ERR_OK;
+}
+
+dsn::error_code replication_ddl_client::query_dup(const std::string &app_name,
+                                                  duplication_query_response *resp)
+{
+    auto req = std::make_shared<duplication_query_request>();
+
+    req->app_name = app_name;
+
+    auto resp_task = request_meta<duplication_query_request>(RPC_CM_QUERY_DUPLICATION, req);
+    resp_task->wait();
+    if (resp_task->error() != dsn::ERR_OK) {
+        fmt::print("failed to query duplication info: [app_name: {}] "
+                   "unable to send rpc to server: {}\n",
+                   app_name,
+                   resp_task->error().to_string());
+        return resp_task->error();
+    }
+
+    ::dsn::unmarshall(resp_task->response(), *resp);
+    if (resp->err != dsn::ERR_OK) {
+        fmt::print("failed to query duplication info: [app_name: {}] "
+                   "server responded: [}\n",
+                   app_name,
+                   resp->err.to_string());
+        return resp->err;
+    }
+    return dsn::ERR_OK;
+}
+
+dsn::error_code replication_ddl_client::query_dup(const std::string &app_name)
+{
+    dsn::replication::duplication_query_response resp;
+    error_code ec = query_dup(app_name, &resp);
+    if (ec != ERR_OK) {
+        return ec;
+    }
+
+    if (resp.entry_list.empty()) {
+        fmt::print("no duplication for app [{}]\n", app_name);
+        return dsn::ERR_OK;
+    }
+
+    fmt::print("duplications of app [{}] are listed as below:\n", app_name);
+    fmt::print("|{: ^16}|{: ^12}|{: ^25}|\n", "dup_id", "status", "create_time");
+
+    char create_time[25];
+    for (auto info : resp.entry_list) {
+        utils::time_ms_to_date_time(info.create_ts, create_time, sizeof(create_time));
+        fmt::print("|{: ^16}|{: ^12}|{: ^25}|\n",
+                   info.dupid,
+                   duplication_status_to_string(info.status),
+                   create_time);
+    }
+
+    return dsn::ERR_OK;
 }
 
 bool replication_ddl_client::valid_app_char(int c)

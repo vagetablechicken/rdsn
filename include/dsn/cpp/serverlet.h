@@ -37,6 +37,7 @@
 
 #include <dsn/cpp/clientlet.h>
 #include <dsn/cpp/service_app.h>
+#include <dsn/cpp/rpc_holder.h>
 
 namespace dsn {
 /*!
@@ -121,6 +122,12 @@ protected:
                               const char *rpc_name_,
                               void (T::*handler)(const TRequest &, TResponse &),
                               dsn_gpid gpid = dsn_gpid{0});
+
+    template <typename TRpcHolder>
+    bool register_rpc_handler_with_rpc_holder(dsn_task_code_t rpc_code,
+                                              const char *rpc_description,
+                                              void (T::*handler)(TRpcHolder),
+                                              dsn_gpid gpid = dsn_gpid{0});
 
     template <typename TRequest, typename TResponse>
     bool register_async_rpc_handler(dsn_task_code_t rpc_code,
@@ -213,6 +220,29 @@ inline bool serverlet<T>::register_rpc_handler(dsn_task_code_t rpc_code,
     };
 
     return dsn_rpc_register_handler(rpc_code, rpc_name_, cb, hc, gpid);
+}
+
+template <typename T>
+template <typename TRpcHolder>
+inline bool serverlet<T>::register_rpc_handler_with_rpc_holder(dsn_task_code_t rpc_code,
+                                                               const char *rpc_description,
+                                                               void (T::*handler)(TRpcHolder),
+                                                               dsn_gpid gpid)
+{
+    typedef handler_context<void (T::*)(TRpcHolder)> hc_type;
+    auto hc = (hc_type *)malloc(sizeof(hc_type));
+    hc->this_ = (T *)this;
+    hc->cb = handler;
+
+    dsn_rpc_request_handler_t cb = [](dsn_message_t request, void *param) {
+        auto hc2 = (hc_type *)param;
+        TRpcHolder rpc(request);
+        rpc.auto_reply();
+
+        ((hc2->this_)->*(hc2->cb))(rpc);
+    };
+
+    return dsn_rpc_register_handler(rpc_code, rpc_description, cb, hc, gpid);
 }
 
 template <typename T>

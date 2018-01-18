@@ -101,6 +101,14 @@ public:
                                 bool skip_lost_partitions,
                                 const std::string &outfile);
 
+    dsn::error_code add_dup(const std::string &app_name, const std::string &remote_address);
+
+    dsn::error_code
+    change_dup_status(const std::string &app_name, int dupid, duplication_status::type status);
+
+    dsn::error_code query_dup(const std::string &app_name);
+    dsn::error_code query_dup(const std::string &app_name, duplication_query_response *resp);
+
     // get host name from ip series
     // if can't get a hostname from ip(maybe no hostname or other errors), return UNRESOLVABLE
     // if multiple hostname got, return <host1,host2> ...

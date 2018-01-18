@@ -40,6 +40,8 @@
 #include <dsn/cpp/json_helper.h>
 #include <dsn/dist/replication/replication_app_base.h>
 
+#include "duplication/replica_duplication.h"
+
 #ifdef __TITLE__
 #undef __TITLE__
 #endif
@@ -60,7 +62,8 @@ replica::replica(
       _chkpt_total_size(0),
       _cur_download_size(0),
       _restore_progress(0),
-      _restore_status(ERR_OK)
+      _restore_status(ERR_OK),
+      _duplication_impl(new duplication_impl(this))
 {
     dassert(_app_info.app_type != "", "");
     dassert(stub != nullptr, "");

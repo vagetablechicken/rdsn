@@ -340,6 +340,8 @@ protected:
     bool _force_flush;
 
 private:
+    friend class mutation_duplicator;
+
     ///////////////////////////////////////////////
     //// memory states
     ///////////////////////////////////////////////
@@ -375,8 +377,10 @@ class mutation_log_shared : public mutation_log
 {
 public:
     mutation_log_shared(const std::string &dir, int32_t max_log_file_mb, bool force_flush)
-        : mutation_log(dir, max_log_file_mb, dsn::gpid(), nullptr), _is_writing(false),
-          _pending_write_start_offset(0), _force_flush(force_flush)
+        : mutation_log(dir, max_log_file_mb, dsn::gpid(), nullptr),
+          _is_writing(false),
+          _pending_write_start_offset(0),
+          _force_flush(force_flush)
     {
     }
 
@@ -426,12 +430,15 @@ public:
                          uint32_t batch_buffer_bytes,
                          uint32_t batch_buffer_max_count,
                          uint64_t batch_buffer_flush_interval_ms)
-        : mutation_log(dir, max_log_file_mb, gpid, r), _batch_buffer_bytes(batch_buffer_bytes),
+        : mutation_log(dir, max_log_file_mb, gpid, r),
+          _batch_buffer_bytes(batch_buffer_bytes),
           _batch_buffer_max_count(batch_buffer_max_count),
           _batch_buffer_flush_interval_ms(batch_buffer_flush_interval_ms)
     {
         mutation_log_private::init_states();
     }
+
+    ~mutation_log_private() override { close(); }
 
     virtual ::dsn::task_ptr append(mutation_ptr &mu,
                                    dsn_task_code_t callback_code,

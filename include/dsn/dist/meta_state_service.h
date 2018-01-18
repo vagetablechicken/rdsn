@@ -50,6 +50,9 @@
 
 namespace dsn {
 namespace dist {
+
+// SEE: src/dist/replication/meta_state_service_simple
+// SEE: src/dist/replication/zookeeper/meta_state_service_zookeeper
 class meta_state_service
 {
 public:

@@ -508,6 +508,19 @@ extern DSN_API dsn_uri_t dsn_uri_clone(dsn_uri_t uri);
 /*! destroy a URI address */
 extern DSN_API void dsn_uri_destroy(dsn_uri_t uri);
 
+/*!
+ This function returns the cluster id of url specified in the url-resolver section
+ of your configuration, for example:
+
+     [uri-resolver.dsn://slave-cluster]
+     factory = partition_resolver_simple
+     cluster_id = 3
+     arguments = 10.231.58.247:54601, 10.231.58.247:54602, 10.231.58.247:54603
+
+ The returned cluster id of url "dsn://slave-cluster" is 3.
+ */
+extern DSN_API int dsn_uri_to_cluster_id(const char *url);
+
 /*! build a group address with a name, must be destroyed later using \ref dsn_group_destroy */
 extern DSN_API dsn_group_t dsn_group_build(const char *name);
 

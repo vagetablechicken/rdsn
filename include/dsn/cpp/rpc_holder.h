@@ -69,6 +69,10 @@ template <typename TRequest, typename TResponse>
 class rpc_holder
 {
 public:
+    using request_type = TRequest;
+    using response_type = TResponse;
+
+public:
     explicit rpc_holder(dsn_message_t req = nullptr)
     {
         if (req != nullptr) {
@@ -138,6 +142,11 @@ public:
         return t;
     }
 
+    // Implies that rpc_holder will reply the request after its lifetime ends.
+    // By default rpc_holder never replies.
+    // SEE: serverlet<T>::register_rpc_handler_with_rpc_holder
+    void auto_reply() { _i->auto_reply = true; }
+
     // Only use this function when testing.
     // In mock mode, all messages will be dropped into mail_box without going through network,
     // and response callbacks will never be called.
@@ -167,7 +176,7 @@ private:
     struct internal
     {
         explicit internal(dsn_message_t req)
-            : dsn_request(req), thrift_request(make_unique<TRequest>())
+            : dsn_request(req), thrift_request(make_unique<TRequest>()), auto_reply(false)
         {
             // we must hold one reference for the request, or rdsn will delete it after
             // the rpc call ends.
@@ -185,11 +194,22 @@ private:
             dsn::marshall(dsn_request, *thrift_request);
         }
 
-        ~internal() { dsn_msg_release_ref(dsn_request); }
+        ~internal()
+        {
+            dsn_msg_release_ref(dsn_request);
+
+            if (auto_reply) {
+                dsn_message_t dsn_response = dsn_msg_create_response(dsn_request);
+                ::dsn::marshall(dsn_response, thrift_response);
+                dsn_rpc_reply(dsn_response);
+            }
+        }
 
         dsn_message_t dsn_request;
         std::unique_ptr<TRequest> thrift_request;
         TResponse thrift_response;
+
+        bool auto_reply;
     };
 
     std::shared_ptr<internal> _i;

@@ -43,6 +43,8 @@
 #include <vector>
 #include <deque>
 
+#include "duplication/replica_stub_duplication.h"
+
 #ifdef __TITLE__
 #undef __TITLE__
 #endif
@@ -64,7 +66,8 @@ replica_stub::replica_stub(replica_state_subscriber subscriber /*= nullptr*/,
       _verbose_client_log(false),
       _verbose_commit_log(false),
       _learn_app_concurrent_count(0),
-      _fs_manager(false)
+      _fs_manager(false),
+      _duplication_impl(new duplication_impl(this))
 {
     _replica_state_subscriber = subscriber;
     _is_long_subscriber = is_long_subscriber;

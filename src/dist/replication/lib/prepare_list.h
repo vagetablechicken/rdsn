@@ -37,6 +37,8 @@
 
 #include "mutation_cache.h"
 
+#include <dsn/cpp/errors.h>
+
 namespace dsn {
 namespace replication {
 
@@ -48,6 +50,11 @@ enum commit_type
     // - only valid when partition_status::PS_SECONDARY or partition_status::PS_PRIMARY
 };
 
+// prepare_list origins from the concept of `prepared list` in PacificA.
+// It stores an continuous and ordered list of mutations.
+// The prefix of the prepared list up to a `committed point` is regarded as committed.
+// The prepare_list only stores the most updated part (the uncommitted suffix) of prepared list,
+// say, the committed prefix will be truncated automatically.
 class prepare_list : public mutation_cache
 {
 public:
@@ -59,6 +66,11 @@ public:
     decree last_committed_decree() const { return _last_committed_decree; }
     void reset(decree init_decree);
     void truncate(decree init_decree);
+
+    // Possible error:
+    //  - ERR_VERSION_OUTDATED: returned if the mutation's ballot is outdated, or the log
+    //                          is already committed.
+    error_s check_if_valid_to_prepare(mutation_ptr &mu);
 
     //
     // for two-phase commit

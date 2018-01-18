@@ -1,6 +1,7 @@
 .matchfile
 .kdev4/
 .zk_install/
+.idea
 
 bin/Linux/thrift
 builder/
@@ -9,6 +10,7 @@ test_reports/
 Dockerfile
 include/thrift/
 include/dsn/git_commit.h
+cmake-build-debug
 
 rdsn.github.config
 rdsn.github.creator

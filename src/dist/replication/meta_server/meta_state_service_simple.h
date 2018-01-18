@@ -71,6 +71,11 @@ public:
                        const err_callback &cb_create_tree,
                        clientlet *tracker = nullptr) override;
 
+    // Possible errors:
+    //  - ERR_OBJECT_NOT_FOUND: parent node is not created yet.
+    //  - ERR_NODE_ALREADY_EXIST: node's been created.
+    //  - ERR_INVALID_PARAMETERS: node is not in valid format.
+    //  -
     virtual task_ptr create_node(const std::string &node,
                                  task_code cb_code,
                                  const err_callback &cb_create,
@@ -93,6 +98,10 @@ public:
                               const err_value_callback &cb_get_data,
                               clientlet *tracker = nullptr) override;
 
+    // Possible errors:
+    //  - ERR_OBJECT_NOT_FOUND: node is not found.
+    //  - ERR_INVALID_PARAMETERS: node is not in valid format.
+    //  -
     virtual task_ptr set_data(const std::string &node,
                               const blob &value,
                               task_code cb_code,
@@ -106,6 +115,8 @@ public:
     virtual ~meta_state_service_simple() override;
 
 private:
+    friend class meta_state_service_test;
+
     struct operation
     {
         bool done;
@@ -239,7 +250,10 @@ private:
     using delete_node_log = log_struct<operation_type::delete_node, std::string, bool>;
     using set_data_log = log_struct<operation_type::set_data, std::string, blob>;
 
+    // Return an empty string if `s` is invalid(the leading character must be '\') or emtpy.
+    //
     static std::string normalize_path(const std::string &s);
+
     static error_code extract_name_parent_from_path(const std::string &s,
                                                     /*out*/ std::string &name,
                                                     /*out*/ std::string &parent);

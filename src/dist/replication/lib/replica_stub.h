@@ -45,6 +45,7 @@
 #include "../client_lib/fs_manager.h"
 #include "../client_lib/block_service_manager.h"
 #include "replica.h"
+
 #include <dsn/cpp/perf_counter_wrapper.h>
 #include <dsn/dist/failure_detector_multimaster.h>
 
@@ -142,6 +143,7 @@ public:
     replica_ptr get_replica(int32_t app_id, int32_t partition_index);
     replication_options &options() { return _options; }
     bool is_connected() const { return NS_Connected == _state; }
+    virtual rpc_address get_meta_server_address() const { return _failure_detector->get_servers(); }
 
     // void json_state(std::stringstream& out) const;
 
@@ -205,6 +207,9 @@ private:
     friend class ::dsn::replication::test::test_checker;
     friend class ::dsn::replication::replica;
     friend class ::dsn::replication::cold_backup_context;
+    friend class mock_replica_stub;
+    friend class replica_stub_duplication_test;
+
     typedef std::unordered_map<gpid, ::dsn::task_ptr> opening_replicas;
     typedef std::unordered_map<gpid, std::pair<::dsn::task_ptr, replica_ptr>>
         closing_replicas; // <gpid, <close_task, replica> >
@@ -293,6 +298,9 @@ private:
     perf_counter_wrapper _counter_cold_backup_recent_upload_file_size;
     perf_counter_wrapper _counter_cold_backup_max_duration_time_ms;
     perf_counter_wrapper _counter_cold_backup_max_upload_file_size;
+
+    class duplication_impl;
+    std::unique_ptr<duplication_impl> _duplication_impl;
 
 private:
     void response_client_error(gpid gpid, bool is_read, dsn_message_t request, error_code error);

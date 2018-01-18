@@ -67,7 +67,11 @@ class meta_options
 {
 public:
     std::string cluster_root;
+
+    // The provider type of meta state service, which may either be
+    // meta_state_service_simple or meta_state_service_zookeeper.
     std::string meta_state_service_type;
+
     std::vector<std::string> meta_state_service_args;
 
     uint64_t node_live_percentage_threshold_for_update;
@@ -86,6 +90,7 @@ public:
     bool cold_backup_disabled;
 
 public:
+    // Read options from configuration file.
     void initialize();
 
 public:

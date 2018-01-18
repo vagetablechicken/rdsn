@@ -61,6 +61,7 @@
 #include <dsn/tool-api/task.h>
 #include "group_address.h"
 #include "uri_address.h"
+#include "rpc_engine.h"
 
 namespace dsn {
 const rpc_address rpc_group_address::_invalid;
@@ -306,3 +307,8 @@ DSN_API dsn_uri_t dsn_uri_clone(dsn_uri_t uri) // must be paired with destroy la
 }
 
 DSN_API void dsn_uri_destroy(dsn_uri_t uri) { delete (::dsn::rpc_uri_address *)(uri); }
+
+DSN_API int dsn_uri_to_cluster_id(const char *url)
+{
+    return ::dsn::task::get_current_rpc()->uri_resolver_mgr()->get_cluster_id(url);
+}

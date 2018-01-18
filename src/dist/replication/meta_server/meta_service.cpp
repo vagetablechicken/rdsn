@@ -38,6 +38,7 @@
 
 #include <dsn/utility/factory_store.h>
 #include <dsn/dist/meta_state_service.h>
+#include <dsn/dist/replication/duplication_common.h>
 #include <dsn/tool-api/command.h>
 #include <algorithm> // for std::remove_if
 #include <cctype>    // for ::isspace
@@ -315,6 +316,8 @@ void meta_service::register_rpc_handlers()
     register_rpc_handler(RPC_CM_QUERY_RESTORE_STATUS,
                          "query_restore_status",
                          &meta_service::on_query_restore_status);
+
+    register_duplication_rpc_handlers();
 }
 
 int meta_service::check_leader(dsn_message_t req)
@@ -694,6 +697,60 @@ void meta_service::on_query_restore_status(dsn_message_t req)
     tasking::enqueue(LPC_META_STATE_NORMAL,
                      nullptr,
                      std::bind(&server_state::on_query_restore_status, _state.get(), req));
+}
+
+// ============== duplication related rpc ===============
+
+void meta_service::on_add_duplication(duplication_add_rpc rpc)
+{
+    RPC_CHECK_STATUS(rpc.dsn_request(), rpc.response());
+
+    tasking::enqueue(LPC_META_STATE_NORMAL,
+                     nullptr,
+                     std::bind(&server_state::add_duplication, _state.get(), rpc),
+                     server_state::sStateHash);
+}
+
+void meta_service::on_change_duplication_status(duplication_status_change_rpc rpc)
+{
+    RPC_CHECK_STATUS(rpc.dsn_request(), rpc.response());
+
+    tasking::enqueue(LPC_META_STATE_NORMAL,
+                     this,
+                     std::bind(&server_state::change_duplication_status, _state.get(), rpc),
+                     server_state::sStateHash);
+}
+
+void meta_service::on_query_duplication_info(duplication_query_rpc rpc)
+{
+    RPC_CHECK_STATUS(rpc.dsn_request(), rpc.response());
+
+    _state->query_duplication_info(rpc);
+}
+
+// SEE: replica_stub::duplication_impl::duplication_sync
+void meta_service::on_duplication_sync(duplication_sync_rpc rpc)
+{
+    RPC_CHECK_STATUS(rpc.dsn_request(), rpc.response());
+
+    tasking::enqueue(LPC_META_STATE_NORMAL,
+                     this,
+                     std::bind(&server_state::duplication_sync, _state.get(), rpc),
+                     server_state::sStateHash);
+}
+
+void meta_service::register_duplication_rpc_handlers()
+{
+    register_rpc_handler_with_rpc_holder(
+        RPC_CM_ADD_DUPLICATION, "add_duplication", &meta_service::on_add_duplication);
+    register_rpc_handler_with_rpc_holder(RPC_CM_CHANGE_DUPLICATION_STATUS,
+                                         "change duplication status",
+                                         &meta_service::on_change_duplication_status);
+    register_rpc_handler_with_rpc_holder(RPC_CM_QUERY_DUPLICATION,
+                                         "query duplication info",
+                                         &meta_service::on_query_duplication_info);
+    register_rpc_handler_with_rpc_holder(
+        RPC_CM_DUPLICATION_SYNC, "sync duplication", &meta_service::on_duplication_sync);
 }
 }
 }
