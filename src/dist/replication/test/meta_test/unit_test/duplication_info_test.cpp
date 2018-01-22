@@ -28,10 +28,19 @@
 
 #include <gtest/gtest.h>
 
-using namespace dsn;
-using namespace dsn::replication;
+namespace dsn {
+namespace replication {
 
-TEST(duplication_info, init_and_start)
+class duplication_info_test : public testing::Test
+{
+public:
+    void pass_progress_time_wait(duplication_info *dup)
+    {
+        dup->last_progress_update -= duplication_info::PROGRESS_UPDATE_PERIOD_MS + 100;
+    }
+};
+
+TEST_F(duplication_info_test, init_and_start)
 {
     duplication_info dup(1, "dsn://slave-cluster/temp", "/meta_test/101/duplication/1");
     ASSERT_FALSE(dup.is_altering());
@@ -44,7 +53,7 @@ TEST(duplication_info, init_and_start)
     ASSERT_EQ(dup.next_status, duplication_status::DS_START);
 }
 
-TEST(duplication_info, stable_status)
+TEST_F(duplication_info_test, stable_status)
 {
     duplication_info dup(1, "dsn://slave-cluster/temp", "/meta_test/101/duplication/1");
     dup.start();
@@ -60,7 +69,7 @@ TEST(duplication_info, stable_status)
     ASSERT_EQ(dup.next_status, duplication_status::DS_INIT);
 }
 
-TEST(duplication_info, alter_status_when_busy)
+TEST_F(duplication_info_test, alter_status_when_busy)
 {
     duplication_info dup(1, "dsn://slave-cluster/temp", "/meta_test/101/duplication/1");
     dup.start();
@@ -68,7 +77,7 @@ TEST(duplication_info, alter_status_when_busy)
     ASSERT_EQ(dup.alter_status(duplication_status::DS_PAUSE), ERR_BUSY);
 }
 
-TEST(duplication_info, alter_status)
+TEST_F(duplication_info_test, alter_status)
 {
     struct TestData
     {
@@ -104,7 +113,7 @@ TEST(duplication_info, alter_status)
     }
 }
 
-TEST(duplication_info, encode_and_decode)
+TEST_F(duplication_info_test, encode_and_decode)
 {
     duplication_info dup(1, "dsn://slave-cluster/temp", "/meta_test/101/duplication/1");
     dup.start();
@@ -113,3 +122,34 @@ TEST(duplication_info, encode_and_decode)
     auto copy_dup = dup.copy();
     ASSERT_EQ(copy_dup->to_string(), dup.to_string());
 }
+
+TEST_F(duplication_info_test, alter_progress)
+{
+    duplication_info dup(1, "dsn://slave-cluster/temp", "/meta_test/101/duplication/1");
+
+    dup.alter_progress(1, 5);
+    ASSERT_EQ(dup.progress[1], 5);
+    ASSERT_TRUE(dup.is_altering());
+
+    // too frequent to update.
+    ASSERT_FALSE(dup.alter_progress(1, 10));
+    ASSERT_EQ(dup.progress[1], 10);
+    ASSERT_TRUE(dup.is_altering());
+
+    dup.stable_progress();
+    ASSERT_EQ(dup.stored_progress[1], 10);
+    ASSERT_FALSE(dup.is_altering());
+
+    // too frequent to update.
+    ASSERT_FALSE(dup.alter_progress(1, 15));
+    ASSERT_FALSE(dup.is_altering());
+
+    // since the progress is not stable now,
+    // the update still make sense.
+    pass_progress_time_wait(&dup);
+    ASSERT_TRUE(dup.alter_progress(1, 15));
+    ASSERT_TRUE(dup.is_altering());
+}
+
+} // namespace replication
+} // namespace dsn

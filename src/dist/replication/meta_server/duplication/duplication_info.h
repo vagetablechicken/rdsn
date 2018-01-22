@@ -27,6 +27,7 @@
 #pragma once
 
 #include <dsn/dist/replication/replication.types.h>
+#include <dsn/dist/replication/replication_other_types.h>
 #include <dsn/dist/replication/duplication_common.h>
 #include <dsn/cpp/json_helper.h>
 #include <dsn/cpp/zlocks.h>
@@ -40,9 +41,6 @@ namespace replication {
 using ::dsn::error_code;
 using ::dsn::service::zauto_write_lock;
 
-// dupid is the identifier of duplication.
-typedef int32_t dupid_t;
-
 class app_state;
 class duplication_info
 {
@@ -55,7 +53,7 @@ public:
           _is_altering(false),
           status(duplication_status::DS_INIT),
           next_status(duplication_status::DS_INIT),
-          last_progress_update(-1)
+          last_progress_update(0)
     {
     }
 
@@ -69,9 +67,16 @@ public:
     // Thread-Safe
     void start()
     {
-        zauto_write_lock l(lock);
+        zauto_write_lock l(_lock);
         _is_altering = true;
         next_status = duplication_status::DS_START;
+    }
+
+    // Thread-Safe
+    duplication_status::type get_status() const
+    {
+        ::dsn::service::zauto_read_lock l(_lock);
+        return status;
     }
 
     // change current status to `to`.
@@ -79,7 +84,7 @@ public:
     // Thread-Safe
     error_code alter_status(duplication_status::type to)
     {
-        zauto_write_lock l(lock);
+        zauto_write_lock l(_lock);
         return do_alter_status(to);
     }
 
@@ -88,7 +93,7 @@ public:
     // Thread-Safe
     void stable_status()
     {
-        zauto_write_lock l(lock);
+        zauto_write_lock l(_lock);
         if (!_is_altering)
             return;
 
@@ -97,45 +102,73 @@ public:
         next_status = duplication_status::DS_INIT;
     }
 
-    // Returns: false if the previous update is still in progress.
-    // Thread-Safe
-    bool update_progress()
+    ///
+    /// alter_progress -> stable_progress
+    ///
+
+    // Returns: false if the progress did not advanced to `d`.
+    // Thread-safe
+    bool alter_progress(int partition_index, decree d)
     {
-        zauto_write_lock l(lock);
-        if (_is_altering) {
-            return false;
+        zauto_write_lock l(_lock);
+
+        if (progress[partition_index] < d) {
+            progress[partition_index] = d;
         }
 
-        _is_altering = true;
-        last_progress_update = dsn_now_ms();
-        return true;
+        if (progress[partition_index] != stored_progress[partition_index]) {
+            // progress update is not supposed to be too frequent.
+            if (dsn_now_ms() > last_progress_update + PROGRESS_UPDATE_PERIOD_MS) {
+                if (_is_altering) {
+                    return false;
+                }
+
+                _is_altering = true;
+                last_progress_update = dsn_now_ms();
+                return true;
+            }
+        }
+        return false;
     }
 
     // Thread-Safe
     void stable_progress()
     {
-        zauto_write_lock l(lock);
+        zauto_write_lock l(_lock);
         _is_altering = false;
         stored_progress = std::move(progress);
     }
 
+    // This function should only be used for testing.
     // Not-Thread-Safe
     bool is_altering() const { return _is_altering; }
 
-    // This function is mainly used for testing.
+    // Thread-Safe
     bool equals_to(const duplication_info &rhs) const { return to_string() == rhs.to_string(); }
 
-    // This function is mainly used for testing.
+    // Thread-Safe
     std::string to_string() const
     {
-        blob b = json::json_forwarder<duplication_info>::encode(*this);
+        blob b = to_json_blob();
         return std::string(b.data(), b.length());
     }
 
-    std::shared_ptr<duplication_info> copy()
+    // Thread-Safe
+    std::shared_ptr<duplication_info> copy() const { return create_from_blob(to_json_blob()); }
+
+    // Thread-Safe
+    std::shared_ptr<duplication_info> copy_in_status(duplication_status::type status) const
     {
-        blob b = json::json_forwarder<duplication_info>::encode(*this);
-        return create_from_blob(b);
+        auto dup = copy();
+        dup->status = status;
+        return dup;
+    }
+
+    // Thread-Safe
+    blob to_json_blob() const
+    {
+        ::dsn::service::zauto_read_lock l(_lock);
+        return json::json_forwarder<duplication_info>::encode(*this);
     }
 
     const dupid_t id;
@@ -144,6 +177,8 @@ public:
     const uint64_t create_timestamp_ms; // the time when this dup is created.
 
 private:
+    friend class duplication_info_test;
+
     duplication_info() : id(0), create_timestamp_ms(0) {}
 
     error_code do_alter_status(duplication_status::type to);
@@ -152,28 +187,27 @@ private:
     // it will be reset to false after duplication state being persisted.
     bool _is_altering;
 
+    mutable ::dsn::service::zrwlock_nr _lock;
+
+    static constexpr int PROGRESS_UPDATE_PERIOD_MS = 5000;
+
 public:
+    // The following fields are made public to be accessible for
+    // json decoder. It should be noted that they are not thread-safe
+    // for user.
+
     duplication_status::type status;
     duplication_status::type next_status;
 
-    // dupid -> the decree that's been replicated to remote
-    std::map<dupid_t, int64_t> progress;
+    // partition index -> the decree that's been replicated to remote
+    std::map<int, int64_t> progress;
     // the latest progress that's been persisted in meta-state storage
-    std::map<dupid_t, int64_t> stored_progress;
+    std::map<int, int64_t> stored_progress;
     // the time of last progress update to meta-state storage
     uint64_t last_progress_update;
 
-    mutable ::dsn::service::zrwlock_nr lock;
-
     DEFINE_JSON_SERIALIZATION(id, remote, status, create_timestamp_ms, progress);
 };
-
-// format duplication_info using fmt::format"{}"
-inline void
-format_arg(fmt::BasicFormatter<char> &f, const char *&format_str, const duplication_info &dup)
-{
-    f.writer() << dup.to_string();
-}
 
 typedef std::shared_ptr<duplication_info> duplication_info_s_ptr;
 

@@ -1427,14 +1427,16 @@ dsn::error_code replication_ddl_client::query_dup(const std::string &app_name)
     }
 
     fmt::print("duplications of app [{}] are listed as below:\n", app_name);
-    fmt::print("|{: ^16}|{: ^12}|{: ^25}|\n", "dup_id", "status", "create_time");
+    fmt::print(
+        "|{: ^16}|{: ^12}|{: ^24}|{: ^25}|\n", "dup_id", "status", "remote cluster", "create time");
 
     char create_time[25];
     for (auto info : resp.entry_list) {
         utils::time_ms_to_date_time(info.create_ts, create_time, sizeof(create_time));
-        fmt::print("|{: ^16}|{: ^12}|{: ^25}|\n",
+        fmt::print("|{: ^16}|{: ^12}|{: ^24}|{: ^25}|\n",
                    info.dupid,
                    duplication_status_to_string(info.status),
+                   info.remote_address,
                    create_time);
     }
 

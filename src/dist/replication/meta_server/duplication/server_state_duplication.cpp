@@ -35,18 +35,15 @@
 namespace dsn {
 namespace replication {
 
-//
-#define PROGRESS_UPDATE_PERIOD_MS 5000
-
 // DEVELOPER NOTES:
 //
 // Read operations for duplication are multi-threaded(THREAD_POOL_META_SERVER),
 // but writes are always in a single-worker thread pool(THREAD_POOL_META_STATE).
-// Therefore in write-op, only write lock should be held whenever shared data changes,
-// and in read-op, please remember to hold read lock before accessing shared data.
-// Holding read lock in THREAD_POOL_META_STATE is redundant.
+// Therefore in each write-op, only write lock should be held when shared data
+// changes. Holding read lock in THREAD_POOL_META_STATE is redundant.
+// In read-op, please remember to hold read lock before accessing shared data.
 //
-// =================================================================================
+// =============================================================================
 
 inline duplication_entry construct_duplication_entry(const duplication_info &dup)
 {
@@ -54,7 +51,7 @@ inline duplication_entry construct_duplication_entry(const duplication_info &dup
     entry.dupid = dup.id;
     entry.create_ts = dup.create_timestamp_ms;
     entry.remote_address = dup.remote;
-    entry.status = dup.status;
+    entry.status = dup.get_status();
     return entry;
 }
 
@@ -122,11 +119,10 @@ void server_state::duplication_impl::do_duplication_status_change(
 
     dup->alter_status(rpc.request().status);
 
-    auto changed_dup = dup->copy();
-    changed_dup->stable_status();
-    std::string dup_path = get_duplication_path(*app, changed_dup->id);
-    blob value = dsn::json::json_forwarder<duplication_info>::encode(*changed_dup);
+    // store the duplication in requested status.
+    blob value = dup->copy_in_status(rpc.request().status)->to_json_blob();
 
+    std::string dup_path = get_duplication_path(*app, dup->id);
     _meta_svc->get_remote_storage()->set_data(
         dup->store_path, value, LPC_META_STATE_HIGH, on_write_storage_complete, tracker());
 }
@@ -211,10 +207,7 @@ void server_state::duplication_impl::do_add_duplication(std::shared_ptr<app_stat
     dup->start();
 
     // store the duplication in started state
-    auto started_dup = dup->copy();
-    started_dup->start();
-    started_dup->stable_status();
-    blob value = dsn::json::json_forwarder<duplication_info>::encode(*started_dup);
+    blob value = dup->copy_in_status(duplication_status::DS_START)->to_json_blob();
 
     _meta_svc->get_remote_storage()->create_node(
         dup->store_path, LPC_META_STATE_HIGH, on_write_storage_complete, value, tracker());
@@ -261,22 +254,22 @@ void server_state::duplication_impl::add_duplication(duplication_add_rpc rpc)
            request.remote_cluster_address.c_str());
 
     response.err = ERR_OK;
-//    if (dsn_uri_to_cluster_id(request.remote_cluster_address.c_str()) <= 0) {
-//        dwarn("invalid remote address(%s)", request.remote_cluster_address.c_str());
-//        response.err = ERR_INVALID_PARAMETERS;
-//    }
+    //    if (dsn_uri_to_cluster_id(request.remote_cluster_address.c_str()) <= 0) {
+    //        dwarn("invalid remote address(%s)", request.remote_cluster_address.c_str());
+    //        response.err = ERR_INVALID_PARAMETERS;
+    //    }
 
     if (response.err == ERR_OK) {
         app = _state->get_app(request.app_name);
         if (!app || app->status != app_status::AS_AVAILABLE) {
             response.err = ERR_APP_NOT_EXIST;
         }
-//        else if (app->envs["value_version"] != "1") {
-//            dwarn("unable to add duplication for %s since value_version(%s) is not \"1\"",
-//                  request.app_name.c_str(),
-//                  app->envs["value_version"].c_str());
-//            response.err = ERR_INVALID_VERSION;
-//        }
+        //        else if (app->envs["value_version"] != "1") {
+        //            dwarn("unable to add duplication for %s since value_version(%s) is not \"1\"",
+        //                  request.app_name.c_str(),
+        //                  app->envs["value_version"].c_str());
+        //            response.err = ERR_INVALID_VERSION;
+        //        }
         else {
             duplication_info_s_ptr dup;
             for (auto &ent : app->duplications) {
@@ -324,10 +317,6 @@ void server_state::duplication_impl::duplication_sync(duplication_sync_rpc rpc)
 
     // upload the updated duplications to zookeeper.
     for (duplication_info_s_ptr dup : dup_to_update) {
-        if (!dup->update_progress()) {
-            continue;
-        }
-
         auto on_write_storage_complete = [dup](error_code ec) {
             if (ec == ERR_OK) {
                 dup->stable_progress();
@@ -377,15 +366,8 @@ void server_state::duplication_impl::do_update_progress_on_replica(
         }
 
         duplication_info_s_ptr &dup = kvp->second;
-        {
-            zauto_write_lock l(dup->lock);
-            dup->progress[pid] = confirm.confirmed_decree;
-        }
-
-        if (dup->progress[pid] != dup->stored_progress[pid]) {
-            if (dsn_now_ms() > dup->last_progress_update + PROGRESS_UPDATE_PERIOD_MS) {
-                dup_to_update->insert(dup);
-            }
+        if (dup->alter_progress(pid, confirm.confirmed_decree)) {
+            dup_to_update->insert(dup);
         }
     }
 }
