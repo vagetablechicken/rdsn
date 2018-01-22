@@ -74,7 +74,11 @@ void server_state::duplication_impl::query_duplication_info(duplication_query_rp
             response.appid = app->app_id;
             for (auto &dup_id_to_info : app->duplications) {
                 const duplication_info_s_ptr &dup = dup_id_to_info.second;
-                response.entry_list.emplace_back(construct_duplication_entry(*dup));
+
+                // the removed duplication is not visible to user.
+                if (dup->status != duplication_status::DS_REMOVED) {
+                    response.entry_list.emplace_back(construct_duplication_entry(*dup));
+                }
             }
         }
     }
@@ -242,6 +246,8 @@ void server_state::duplication_impl::do_create_parent_dir_before_adding_duplicat
         parent_path, LPC_META_STATE_HIGH, on_create_parent_complete, blob(), tracker());
 }
 
+// Note that the rpc will not create a new one if the duplication
+// with the same app and remote end point already exists.
 // ThreadPool(WRITE): THREAD_POOL_META_STATE
 void server_state::duplication_impl::add_duplication(duplication_add_rpc rpc)
 {
@@ -273,7 +279,9 @@ void server_state::duplication_impl::add_duplication(duplication_add_rpc rpc)
         else {
             duplication_info_s_ptr dup;
             for (auto &ent : app->duplications) {
-                if (ent.second->remote == request.remote_cluster_address) {
+                auto it = ent.second;
+                if (it->remote == request.remote_cluster_address &&
+                    it->status != duplication_status::DS_REMOVED) {
                     dup = ent.second;
                 }
             }

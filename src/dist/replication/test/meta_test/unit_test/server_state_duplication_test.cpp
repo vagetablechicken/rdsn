@@ -499,5 +499,43 @@ TEST_F(server_state_duplication_test, recover_from_meta_state)
     }
 }
 
+TEST_F(server_state_duplication_test, query_duplication_info)
+{
+    std::string test_app = "test-app";
+
+    create_app(test_app);
+    auto app = find_app(test_app);
+
+    dupid_t test_dup = create_dup(test_app).dupid;
+    change_dup_status(test_app, test_dup, duplication_status::DS_PAUSE);
+
+    auto resp = query_dup_info(test_app);
+    ASSERT_EQ(resp.err, ERR_OK);
+    ASSERT_EQ(resp.entry_list.size(), 1);
+    ASSERT_EQ(resp.entry_list.back().status, duplication_status::DS_PAUSE);
+    ASSERT_EQ(resp.entry_list.back().dupid, test_dup);
+    ASSERT_EQ(resp.appid, app->app_id);
+
+    change_dup_status(test_app, test_dup, duplication_status::DS_REMOVED);
+    resp = query_dup_info(test_app);
+    ASSERT_EQ(resp.err, ERR_OK);
+    ASSERT_EQ(resp.entry_list.size(), 0);
+}
+
+TEST_F(server_state_duplication_test, re_add_duplication)
+{
+    std::string test_app = "test-app";
+
+    create_app(test_app);
+    auto app = find_app(test_app);
+
+    dupid_t test_dup = create_dup(test_app).dupid;
+    auto resp = change_dup_status(test_app, test_dup, duplication_status::DS_REMOVED);
+    ASSERT_EQ(resp.err, ERR_OK);
+
+    dupid_t test_dup_2 = create_dup(test_app).dupid;
+    ASSERT_NE(test_dup, test_dup_2);
+}
+
 } // namespace replication
 } // namespace dsn
