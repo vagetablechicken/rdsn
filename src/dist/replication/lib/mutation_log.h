@@ -35,8 +35,11 @@
 
 #pragma once
 
-#include "../client_lib/replication_common.h"
-#include "mutation.h"
+#include <dsn/cpp/errors.h>
+
+#include "dist/replication/client_lib/replication_common.h"
+#include "dist/replication/lib/mutation.h"
+
 #include <atomic>
 
 namespace dsn {
@@ -123,9 +126,10 @@ class replica;
 class mutation_log : public ref_counter, public virtual clientlet
 {
 public:
-    // return true when the mutation's offset is not less than
-    // the remembered (shared or private) valid_start_offset therefore valid for the replica
+    // DEPRECATED: The returned bool value will never be evaluated.
+    // Always return true in the callback.
     typedef std::function<bool(int log_length, mutation_ptr &)> replay_callback;
+
     typedef std::function<void(dsn::error_code err)> io_failure_callback;
 
 public:
@@ -184,6 +188,29 @@ public:
     static error_code replay(std::vector<std::string> &log_files,
                              replay_callback callback,
                              /*out*/ int64_t &end_offset);
+
+    // Reads a series of mutations from the log file(from current offset of `log`),
+    // and iterates over the mutations, executing the provided `callback` for each
+    // mutation entry.
+    // Since the logs are packed into multiple blocks, this function retrieves
+    // only one log block at a time. The size of block depends on configuration
+    // `log_private_batch_buffer_kb` and `log_private_batch_buffer_count`.
+    //
+    // Parameters:
+    // - read_from_start:
+    // If `read_from_start` is not specified, the reading will continue from the
+    // current offset, otherwise it will start from `log->start_offset()`.
+    //
+    // Returns:
+    // - ERR_INVALID_DATA: if the loaded data is incorrect or invalid.
+    //
+    // SEE:
+    // - mutation_log::replay(log_file_ptr, replay_callback, int64_t &)
+    //
+    static error_s replay_block(log_file_ptr log,
+                                replay_callback callback,
+                                bool read_from_start,
+                                /*out*/ int64_t &end_offset);
 
     //
     // maintain max_decree & valid_start_offset
@@ -340,7 +367,7 @@ protected:
     bool _force_flush;
 
 private:
-    friend class mutation_duplicator;
+    friend class mutation_log_test;
 
     ///////////////////////////////////////////////
     //// memory states

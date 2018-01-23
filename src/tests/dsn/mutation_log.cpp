@@ -268,75 +268,185 @@ TEST(replication, log_file)
     utils::filesystem::remove_path(fpath);
 }
 
-TEST(replication, mutation_log)
+namespace dsn {
+namespace replication {
+
+struct mutation_log_test : public ::testing::Test
 {
-    gpid gpid(1, 0);
-    std::string str = "hello, world!";
-    std::string logp = "./test-log";
-    std::vector<mutation_ptr> mutations;
+    mutation_log_test() : log_dir("test_log_dir"), gpid(1, 0) {}
 
-    // prepare
-    utils::filesystem::remove_path(logp);
-    utils::filesystem::create_directory(logp);
+    void SetUp() override
+    {
+        utils::filesystem::remove_path(log_dir);
+        utils::filesystem::create_directory(log_dir);
+    }
 
-    // writing logs
-    mutation_log_ptr mlog = new mutation_log_private(logp, 4, gpid, nullptr, 1024, 512, 10000);
+    void TearDown() override { utils::filesystem::remove_path(log_dir); }
 
-    auto err = mlog->open(nullptr, nullptr);
-    EXPECT_EQ(err, ERR_OK);
-
-    for (int i = 0; i < 1000; i++) {
+    mutation_ptr create_test_mutation(const std::string &data, decree d)
+    {
         mutation_ptr mu(new mutation());
         mu->data.header.ballot = 1;
-        mu->data.header.decree = 2 + i;
+        mu->data.header.decree = d;
         mu->data.header.pid = gpid;
-        mu->data.header.last_committed_decree = i;
+        mu->data.header.last_committed_decree = d - 1;
         mu->data.header.log_offset = 0;
 
         binary_writer writer;
         for (int j = 0; j < 100; j++) {
-            writer.write(str);
+            writer.write(data);
         }
-        mu->data.updates.push_back(mutation_update());
+        mu->data.updates.emplace_back(mutation_update());
         mu->data.updates.back().code = RPC_REPLICATION_WRITE_EMPTY;
         mu->data.updates.back().data = writer.get_buffer();
 
         mu->client_requests.push_back(nullptr);
 
-        mutations.push_back(mu);
-
-        mlog->append(mu, LPC_AIO_IMMEDIATE_CALLBACK, nullptr, nullptr, 0);
+        return mu;
     }
 
-    mlog->close();
+    static void ASSERT_BLOB_EQ(const blob &lhs, const blob &rhs)
+    {
+        ASSERT_EQ(std::string(lhs.data(), lhs.length()), std::string(rhs.data(), rhs.length()));
+    }
 
-    // reading logs
-    mlog = new mutation_log_private(logp, 4, gpid, nullptr, 1024, 512, 10000);
+    static error_code mutation_log_replay(log_file_ptr &log,
+                                          mutation_log::replay_callback callback,
+                                          /*out*/ int64_t &end_offset)
+    {
+        return mutation_log::replay(log, callback, end_offset);
+    }
 
-    int mutation_index = -1;
-    mlog->open(
-        [&mutations, &mutation_index](int log_length, mutation_ptr &mu) -> bool {
-            mutation_ptr wmu = mutations[++mutation_index];
-#ifdef DSN_USE_THRIFT_SERIALIZATION
-            EXPECT_TRUE(wmu->data.header == mu->data.header);
-#else
-            EXPECT_TRUE(memcmp((const void *)&wmu->data.header,
-                               (const void *)&mu->data.header,
-                               sizeof(mu->data.header)) == 0);
-#endif
-            EXPECT_TRUE(wmu->data.updates.size() == mu->data.updates.size());
-            EXPECT_TRUE(wmu->data.updates[0].data.length() == mu->data.updates[0].data.length());
-            EXPECT_TRUE(memcmp((const void *)wmu->data.updates[0].data.data(),
-                               (const void *)mu->data.updates[0].data.data(),
-                               mu->data.updates[0].data.length()) == 0);
-            EXPECT_TRUE(wmu->data.updates[0].code == mu->data.updates[0].code);
-            EXPECT_TRUE(wmu->client_requests.size() == mu->client_requests.size());
-            return true;
-        },
-        nullptr);
-    EXPECT_TRUE(mutation_index + 1 == (int)mutations.size());
-    mlog->close();
+    const std::string log_dir;
+    const dsn::gpid gpid;
+};
 
-    // clear all
-    utils::filesystem::remove_path(logp);
+} // namespace replication
+} // namespace dsn
+
+TEST_F(mutation_log_test, replay_block)
+{
+    std::vector<mutation_ptr> mutations;
+    uint32_t batch_buffer_bytes = 1 * 1024 * 1024;
+    uint32_t batch_buffer_count = 1000;
+
+    { // writing logs
+        mutation_log_ptr mlog = new mutation_log_private(
+            log_dir, 4, gpid, nullptr, batch_buffer_bytes, batch_buffer_count, 10000);
+
+        EXPECT_EQ(mlog->open(nullptr, nullptr), ERR_OK);
+
+        for (int i = 0; i < batch_buffer_count; i++) {
+            mutation_ptr mu = create_test_mutation("hello!", 2 + i);
+            mutations.push_back(mu);
+            mlog->append(mu, LPC_AIO_IMMEDIATE_CALLBACK, nullptr, nullptr, 0);
+        }
+    }
+
+    { // replaying logs
+        std::string log_file_path = log_dir + "/log.1.0";
+
+        error_code ec;
+        log_file_ptr file = log_file::open_read(log_file_path.c_str(), ec);
+        ASSERT_EQ(ec, ERR_OK);
+
+        int64_t end_offset;
+        int mutation_index = -1;
+        error_s err = mutation_log::replay_block(
+            file,
+            [&mutations, &mutation_index](int log_length, mutation_ptr &mu) -> bool {
+                mutation_ptr wmu = mutations[++mutation_index];
+                EXPECT_EQ(wmu->data.header, mu->data.header);
+                EXPECT_EQ(wmu->data.updates.size(), mu->data.updates.size());
+                ASSERT_BLOB_EQ(wmu->data.updates[0].data, mu->data.updates[0].data);
+                EXPECT_EQ(wmu->data.updates[0].code, mu->data.updates[0].code);
+                EXPECT_EQ(wmu->client_requests.size(), mu->client_requests.size());
+                return true;
+            },
+            true,
+            end_offset);
+        ASSERT_TRUE(err.is_ok()) << err.description();
+    }
+}
+
+TEST_F(mutation_log_test, replay)
+{
+    std::vector<mutation_ptr> mutations;
+    uint32_t batch_buffer_bytes = 1 * 1024 * 1024;
+    uint32_t batch_buffer_count = 100;
+
+    { // writing logs
+        mutation_log_ptr mlog = new mutation_log_private(
+            log_dir, 4, gpid, nullptr, batch_buffer_bytes, batch_buffer_count, 10000);
+
+        EXPECT_EQ(mlog->open(nullptr, nullptr), ERR_OK);
+
+        // divide the mutations into multiple blocks
+        for (int i = 0; i < batch_buffer_count * 10; i++) {
+            mutation_ptr mu = create_test_mutation("hello!", 2 + i);
+            mutations.push_back(mu);
+            mlog->append(mu, LPC_AIO_IMMEDIATE_CALLBACK, nullptr, nullptr, 0);
+        }
+    }
+
+    { // replaying logs
+        std::string log_file_path = log_dir + "/log.1.0";
+
+        error_code ec;
+        log_file_ptr file = log_file::open_read(log_file_path.c_str(), ec);
+        ASSERT_EQ(ec, ERR_OK);
+
+        int64_t end_offset;
+        int mutation_index = -1;
+        ec = mutation_log_replay(
+            file,
+            [&mutations, &mutation_index](int log_length, mutation_ptr &mu) -> bool {
+                mutation_ptr wmu = mutations[++mutation_index];
+                EXPECT_EQ(wmu->data.header, mu->data.header);
+                EXPECT_EQ(wmu->data.updates.size(), mu->data.updates.size());
+                ASSERT_BLOB_EQ(wmu->data.updates[0].data, mu->data.updates[0].data);
+                EXPECT_EQ(wmu->data.updates[0].code, mu->data.updates[0].code);
+                EXPECT_EQ(wmu->client_requests.size(), mu->client_requests.size());
+                return true;
+            },
+            end_offset);
+        ASSERT_EQ(ec, ERR_HANDLE_EOF) << ec.to_string();
+    }
+}
+
+TEST_F(mutation_log_test, write_and_read)
+{
+    std::vector<mutation_ptr> mutations;
+
+    { // writing logs
+        mutation_log_ptr mlog =
+            new mutation_log_private(log_dir, 4, gpid, nullptr, 1024, 512, 10000);
+
+        EXPECT_EQ(mlog->open(nullptr, nullptr), ERR_OK);
+
+        for (int i = 0; i < 1000; i++) {
+            mutation_ptr mu = create_test_mutation("hello!", 2 + i);
+            mutations.push_back(mu);
+            mlog->append(mu, LPC_AIO_IMMEDIATE_CALLBACK, nullptr, nullptr, 0);
+        }
+    }
+
+    { // reading logs
+        mutation_log_ptr mlog =
+            new mutation_log_private(log_dir, 4, gpid, nullptr, 1024, 512, 10000);
+
+        int mutation_index = -1;
+        mlog->open(
+            [&mutations, &mutation_index](int log_length, mutation_ptr &mu) -> bool {
+                mutation_ptr wmu = mutations[++mutation_index];
+                EXPECT_EQ(wmu->data.header, mu->data.header);
+                EXPECT_EQ(wmu->data.updates.size(), mu->data.updates.size());
+                ASSERT_BLOB_EQ(wmu->data.updates[0].data, mu->data.updates[0].data);
+                EXPECT_EQ(wmu->data.updates[0].code, mu->data.updates[0].code);
+                EXPECT_EQ(wmu->client_requests.size(), mu->client_requests.size());
+                return true;
+            },
+            nullptr);
+        ASSERT_EQ(mutation_index + 1, (int)mutations.size());
+    }
 }
