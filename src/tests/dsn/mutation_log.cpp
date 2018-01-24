@@ -34,7 +34,6 @@
  */
 #include "dist/replication/lib/mutation_log.h"
 #include <gtest/gtest.h>
-#include <cstdio>
 
 using namespace ::dsn;
 using namespace ::dsn::replication;
@@ -369,7 +368,7 @@ TEST_F(mutation_log_test, replay_block)
     }
 }
 
-TEST_F(mutation_log_test, replay)
+TEST_F(mutation_log_test, replay_single_file)
 {
     std::vector<mutation_ptr> mutations;
     uint32_t batch_buffer_bytes = 1 * 1024 * 1024;
@@ -448,5 +447,52 @@ TEST_F(mutation_log_test, write_and_read)
             },
             nullptr);
         ASSERT_EQ(mutation_index + 1, (int)mutations.size());
+    }
+}
+
+TEST_F(mutation_log_test, replay_multiple_files)
+{
+    std::vector<mutation_ptr> mutations;
+    int max_log_file_mb = 1;
+
+    { // writing logs
+        mutation_log_ptr mlog =
+            new mutation_log_private(log_dir, max_log_file_mb, gpid, nullptr, 1024, 512, 10000);
+        EXPECT_EQ(mlog->open(nullptr, nullptr), ERR_OK);
+
+        for (int f = 0; f < 20; f++) {
+            for (int i = 0; i < 1000; i++) {
+                mutation_ptr mu = create_test_mutation("hello!", 2 + i);
+                mutations.push_back(mu);
+                mlog->append(mu, LPC_AIO_IMMEDIATE_CALLBACK, nullptr, nullptr, 0);
+            }
+        }
+    }
+
+    { // reading logs
+        mutation_log_ptr mlog =
+            new mutation_log_private(log_dir, 4, gpid, nullptr, 1024, 512, 10000);
+
+        std::vector<std::string> log_files;
+        ASSERT_TRUE(utils::filesystem::get_subfiles(mlog->dir(), log_files, false));
+
+        int64_t end_offset;
+        int mutation_index = -1;
+        mutation_log::replay(
+            log_files,
+            [&mutations, &mutation_index](int log_length, mutation_ptr &mu) -> bool {
+                mutation_ptr wmu = mutations[++mutation_index];
+                EXPECT_EQ(wmu->data.header, mu->data.header);
+                EXPECT_EQ(wmu->data.updates.size(), mu->data.updates.size());
+                ASSERT_BLOB_EQ(wmu->data.updates[0].data, mu->data.updates[0].data);
+                EXPECT_EQ(wmu->data.updates[0].code, mu->data.updates[0].code);
+                EXPECT_EQ(wmu->client_requests.size(), mu->client_requests.size());
+                return true;
+            },
+            end_offset);
+        ASSERT_EQ(mutation_index + 1, (int)mutations.size());
+
+        // Ensure to have more than 1 files.
+        ASSERT_TRUE(log_files.size() > 1);
     }
 }

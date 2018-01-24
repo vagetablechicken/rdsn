@@ -533,6 +533,11 @@ public:
     // file operations
     //
 
+    // Opens the log file but without reading the content. This function
+    // only checks whether the file name is valid or if file exists.
+    // SEE: log_file::open_read(const char *, error_code &);
+    static log_file_ptr open_without_read(const char *path, /*out*/ error_code &err);
+
     // open the log file for read
     // 'path' should be in format of log.{index}.{start_offset}, where:
     //   - index: the index of the log file, start from 1
