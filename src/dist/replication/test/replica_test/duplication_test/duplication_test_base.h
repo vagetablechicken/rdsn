@@ -30,8 +30,7 @@
 
 #include "dist/replication/lib/replica_stub.h"
 #include "dist/replication/lib/duplication/replica_duplication.h"
-
-#include "test_utils.h"
+#include "dist/replication/test/replica_test/unit_test/test_utils.h"
 
 namespace dsn {
 namespace replication {

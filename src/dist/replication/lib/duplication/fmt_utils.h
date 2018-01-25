@@ -26,50 +26,21 @@
 
 #pragma once
 
-#include <dsn/dist/replication/duplication_common.h>
+#include <fmt/format.h>
+#include <dsn/cpp/auto_codes.h>
+#include <dsn/cpp/errors.h>
 
-namespace dsn {
-namespace replication {
+namespace fmt {
 
-class mutation_duplicator;
-
-class duplication_view
+// TODO(wutao1): Move it to core lib.
+inline void format_arg(fmt::BasicFormatter<char> &f, const char *format_str, const dsn::gpid &p)
 {
-public:
-    const dupid_t id;
-    const std::string remote_cluster_address;
+    f.writer().write("{}.{}", p.get_app_id(), p.get_partition_index());
+}
 
-    // the maximum decree that's been persisted in meta server
-    decree confirmed_decree;
+inline void format_arg(fmt::BasicFormatter<char> &f, const char *format_str, const dsn::error_s &p)
+{
+    f.writer().write(p.description());
+}
 
-    // duplication will start from `_last_decree`,
-    // which is the maximum decree that's been duplicated to remote.
-    decree last_decree;
-
-    duplication_status::type status;
-
-    duplication_view(dupid_t dupid, std::string remote_address)
-        : id(dupid),
-          remote_cluster_address(std::move(remote_address)),
-          confirmed_decree(0),
-          last_decree(0),
-          status(duplication_status::DS_INIT)
-    {
-    }
-
-    std::string to_string() const
-    {
-        return fmt::format(
-            "id: {}, remote_cluster_address: {}, confirmed_decree: {}, last_decree: {}, status: {}",
-            id,
-            remote_cluster_address,
-            confirmed_decree,
-            last_decree,
-            duplication_status_to_string(status));
-    }
-};
-
-typedef std::unique_ptr<duplication_view> duplication_view_u_ptr;
-
-} // namespace replication
-} // namespace dsn
+} // namespace fmt

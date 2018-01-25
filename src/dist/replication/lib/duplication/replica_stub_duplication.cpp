@@ -81,7 +81,7 @@ void replica_stub::duplication_impl::init_duplication_confirm_timer()
         std::chrono::milliseconds(_stub->_options.duplication_sync_interval_ms));
 }
 
-// defer implements the defer-semantic in golang. Move it to core lib if
+// defer implements the defer-semantic of golang. Move it to core lib if
 // there are other use cases.
 // See https://github.com/scylladb/seastar/blob/master/util/defer.hh
 // for a better version of `defer`.

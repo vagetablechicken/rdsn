@@ -24,52 +24,48 @@
  * THE SOFTWARE.
  */
 
-#pragma once
+#include <dsn/cpp/errors.h>
 
-#include <dsn/dist/replication/duplication_common.h>
+#include "dist/replication/lib/mutation_log.h"
 
 namespace dsn {
 namespace replication {
+namespace log_utils {
 
-class mutation_duplicator;
-
-class duplication_view
+inline std::map<int, log_file_ptr> open_log_file_map(const std::vector<std::string> &log_files)
 {
-public:
-    const dupid_t id;
-    const std::string remote_cluster_address;
-
-    // the maximum decree that's been persisted in meta server
-    decree confirmed_decree;
-
-    // duplication will start from `_last_decree`,
-    // which is the maximum decree that's been duplicated to remote.
-    decree last_decree;
-
-    duplication_status::type status;
-
-    duplication_view(dupid_t dupid, std::string remote_address)
-        : id(dupid),
-          remote_cluster_address(std::move(remote_address)),
-          confirmed_decree(0),
-          last_decree(0),
-          status(duplication_status::DS_INIT)
-    {
+    std::map<int, log_file_ptr> log_file_map;
+    for (const std::string &fname : log_files) {
+        error_code err;
+        log_file_ptr lf = log_file::open_read(fname.c_str(), err);
+        if (err != ERR_OK) {
+            derror(
+                "failed to read file(%s), skip it [err: %s]", lf->path().c_str(), err.to_string());
+        }
     }
+    return log_file_map;
+}
 
-    std::string to_string() const
-    {
-        return fmt::format(
-            "id: {}, remote_cluster_address: {}, confirmed_decree: {}, last_decree: {}, status: {}",
-            id,
-            remote_cluster_address,
-            confirmed_decree,
-            last_decree,
-            duplication_status_to_string(status));
+// TODO(wutao1): move it to filesystem module.
+inline std::vector<std::string> list_all_files_or_die(const std::string &dir)
+{
+    std::vector<std::string> files;
+    if (!utils::filesystem::get_subfiles(dir, files, false)) {
+        dfatal("unable to list the files under directory (%s)", dir.c_str());
     }
-};
+    return files;
+}
 
-typedef std::unique_ptr<duplication_view> duplication_view_u_ptr;
+inline log_file_ptr open_read_or_die(const std::string &path)
+{
+    error_code ec;
+    log_file_ptr file = log_file::open_read(path.c_str(), ec);
+    if (ec != ERR_OK) {
+        dfatal("failed to open the log file (%s)", path.c_str());
+    }
+    return file;
+}
 
+} // namespace log_utils
 } // namespace replication
 } // namespace dsn

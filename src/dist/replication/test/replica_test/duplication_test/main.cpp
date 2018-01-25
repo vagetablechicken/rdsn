@@ -24,52 +24,42 @@
  * THE SOFTWARE.
  */
 
-#pragma once
+#include <gtest/gtest.h>
 
-#include <dsn/dist/replication/duplication_common.h>
+#include <dsn/service_api_cpp.h>
+#include <dsn/dist/replication/replication_service_app.h>
 
-namespace dsn {
-namespace replication {
+int g_test_count = 0;
+int g_test_ret = 0;
 
-class mutation_duplicator;
-
-class duplication_view
+class replication_service_test_app : public dsn::replication::replication_service_app
 {
 public:
-    const dupid_t id;
-    const std::string remote_cluster_address;
+    explicit replication_service_test_app(dsn_gpid pid) : replication_service_app(pid) {}
 
-    // the maximum decree that's been persisted in meta server
-    decree confirmed_decree;
-
-    // duplication will start from `_last_decree`,
-    // which is the maximum decree that's been duplicated to remote.
-    decree last_decree;
-
-    duplication_status::type status;
-
-    duplication_view(dupid_t dupid, std::string remote_address)
-        : id(dupid),
-          remote_cluster_address(std::move(remote_address)),
-          confirmed_decree(0),
-          last_decree(0),
-          status(duplication_status::DS_INIT)
+    dsn::error_code start(int argc, char **argv) override
     {
+        testing::InitGoogleTest(&argc, argv);
+        g_test_ret = RUN_ALL_TESTS();
+        g_test_count = 1;
+        return dsn::ERR_OK;
     }
 
-    std::string to_string() const
-    {
-        return fmt::format(
-            "id: {}, remote_cluster_address: {}, confirmed_decree: {}, last_decree: {}, status: {}",
-            id,
-            remote_cluster_address,
-            confirmed_decree,
-            last_decree,
-            duplication_status_to_string(status));
-    }
+    dsn::error_code stop(bool) override { return dsn::ERR_OK; }
 };
 
-typedef std::unique_ptr<duplication_view> duplication_view_u_ptr;
+GTEST_API_ int main(int argc, char **argv)
+{
+    testing::InitGoogleTest(&argc, argv);
 
-} // namespace replication
-} // namespace dsn
+    // register all possible services
+    dsn::register_app<replication_service_test_app>("replica");
+
+    // specify what services and tools will run in config file, then run
+    dsn_run_config("config-test.ini", false);
+    while (g_test_count == 0) {
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+
+    dsn_exit(g_test_ret);
+}

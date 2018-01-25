@@ -1724,8 +1724,7 @@ private:
 
 //------------------- log_file --------------------------
 log_file::~log_file() { close(); }
-
-/*static */ log_file_ptr log_file::open_without_read(const char *path, /*out*/ error_code &err)
+/*static */ log_file_ptr log_file::open_read(const char *path, /*out*/ error_code &err)
 {
     char splitters[] = {'\\', '/', 0};
     std::string name = utils::get_last_component(std::string(path), splitters);
@@ -1776,16 +1775,7 @@ log_file::~log_file() { close(); }
         return nullptr;
     }
 
-    return new log_file(path, hfile, index, start_offset, true);
-}
-
-/*static */ log_file_ptr log_file::open_read(const char *path, /*out*/ error_code &err)
-{
-    auto lf = open_without_read(path, err);
-    if (lf == nullptr) {
-        return nullptr;
-    }
-
+    auto lf = new log_file(path, hfile, index, start_offset, true);
     lf->reset_stream();
     blob hdr_blob;
     err = lf->read_next_log_block(hdr_blob);
