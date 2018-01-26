@@ -24,7 +24,6 @@
  * THE SOFTWARE.
  */
 
-#include <dsn/dist/error_code.h>
 #include <dsn/dist/replication/duplication_common.h>
 #include <dsn/dist/replication/fmt_logging.h>
 

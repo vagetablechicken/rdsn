@@ -511,13 +511,13 @@ TEST_F(mutation_log_test, open_log_file_map)
 {
     int max_log_file_mb = 1;
 
-    { // writing mutations to log which will generate multiple files
+    { // generate multiple log files
         mutation_log_ptr mlog =
             new mutation_log_private(log_dir, max_log_file_mb, gpid, nullptr, 1024, 512, 10000);
         ASSERT_EQ(mlog->open(nullptr, nullptr), ERR_OK);
 
-        for (int i = 0; i < 4; i++) {
-            ASSERT_EQ(mutation_log_create_new_log_file(mlog), ERR_OK);
+        for (int f = 0; f < 4; f++) {
+            mutation_log_create_new_log_file(mlog);
         }
 
         dsn_task_tracker_wait_all(mlog->tracker());
@@ -525,8 +525,9 @@ TEST_F(mutation_log_test, open_log_file_map)
 
     {
         auto log_files = log_utils::list_all_files_or_die(log_dir);
-        auto log_file_map = log_utils::open_log_file_map(log_files);
+        ASSERT_EQ(log_files.size(), 4);
 
+        auto log_file_map = log_utils::open_log_file_map(log_files);
         ASSERT_EQ(log_file_map.size(), 4);
     }
 }

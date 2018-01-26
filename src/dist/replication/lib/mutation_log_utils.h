@@ -25,6 +25,7 @@
  */
 
 #include <dsn/cpp/errors.h>
+#include <dsn/utility/filesystem.h>
 
 #include "dist/replication/lib/mutation_log.h"
 
@@ -39,9 +40,9 @@ inline std::map<int, log_file_ptr> open_log_file_map(const std::vector<std::stri
         error_code err;
         log_file_ptr lf = log_file::open_read(fname.c_str(), err);
         if (err != ERR_OK) {
-            derror(
-                "failed to read file(%s), skip it [err: %s]", fname.c_str(), err.to_string());
+            derror("failed to read file(%s), skip it [err: %s]", fname.c_str(), err.to_string());
         }
+        log_file_map[lf->index()] = lf;
     }
     return log_file_map;
 }
