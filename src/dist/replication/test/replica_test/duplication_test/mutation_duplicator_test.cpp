@@ -63,7 +63,7 @@ struct mutation_duplicator_test : public duplication_test_base
     mutation_duplicator_test() : log_dir("./test-log")
     {
         stub = make_unique<replica_stub>();
-        replica = create_replica(stub.get());
+        replica = create_replica(stub.get(), 1, 1, log_dir.c_str());
         backlog_handler = new mock_duplication_backlog_handler;
         replica->get_app()->set_duplication_backlog_handler(backlog_handler);
     }
@@ -209,7 +209,65 @@ TEST_F(mutation_duplicator_test, load_and_ship_mutations)
     }
 }
 
-TEST_F(mutation_duplicator_test, ) {}
+TEST_F(mutation_duplicator_test, find_log_file_with_min_index)
+{
+    std::vector<std::string> mutations;
+    int max_log_file_mb = 1;
+
+    mutation_log_ptr mlog = new mutation_log_private(
+        replica->dir(), max_log_file_mb, replica->get_gpid(), nullptr, 1024, 512, 10000);
+    EXPECT_EQ(mlog->open(nullptr, nullptr), ERR_OK);
+
+    { // writing mutations to log which will generate multiple files
+        for (int f = 0; f < 20; f++) {
+            for (int i = 0; i < 1000; i++) {
+                std::string msg = "hello!";
+                mutations.push_back(msg);
+                mutation_ptr mu = create_test_mutation(2 + i, msg);
+                mlog->append(mu, LPC_AIO_IMMEDIATE_CALLBACK, nullptr, nullptr, 0);
+            }
+        }
+    }
+
+    auto files = log_utils::list_all_files_or_die(log_dir);
+    auto lf = mutation_duplicator::find_log_file_with_min_index(files);
+    ASSERT_TRUE(lf != nullptr);
+    ASSERT_EQ(lf->index(), 1);
+}
+
+TEST_F(mutation_duplicator_test, start_duplication)
+{
+    std::vector<std::string> mutations;
+    int max_log_file_mb = 1;
+
+    mutation_log_ptr mlog = new mutation_log_private(
+        replica->dir(), max_log_file_mb, replica->get_gpid(), nullptr, 1024, 512, 10000);
+    EXPECT_EQ(mlog->open(nullptr, nullptr), ERR_OK);
+
+    { // writing mutations to log which will generate multiple files
+        for (int f = 0; f < 20; f++) {
+            for (int i = 0; i < 1000; i++) {
+                std::string msg = "hello!";
+                mutations.push_back(msg);
+                mutation_ptr mu = create_test_mutation(2 + i, msg);
+                mlog->append(mu, LPC_AIO_IMMEDIATE_CALLBACK, nullptr, nullptr, 0);
+            }
+        }
+    }
+
+    {
+        replica->init_private_log(mlog);
+        auto duplicator = create_duplicator(replica.get());
+        duplicator->enqueue_start_duplication();
+        duplicator->wait_all();
+
+        ASSERT_EQ(backlog_handler->mutation_list, mutations)
+            << backlog_handler->mutation_list.size() << " vs " << mutations.size();
+    }
+}
+
+// Ensures no tasks will be running after duplicator was paused.
+TEST_F(mutation_duplicator_test, pause) {}
 
 } // namespace replication
 } // namespace dsn

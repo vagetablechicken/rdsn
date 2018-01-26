@@ -92,6 +92,8 @@ public:
         _app.reset(nullptr);
     }
 
+    void init_private_log(mutation_log_ptr log) { _private_log = log; }
+
     replica::duplication_impl &get_replica_duplication_impl() { return *_duplication_impl; }
 
     void as_primary() { _config.status = partition_status::PS_PRIMARY; }
@@ -99,14 +101,16 @@ public:
 
 struct duplication_test_base : public ::testing::Test
 {
-    static std::unique_ptr<mock_replica>
-    create_replica(replica_stub *stub, int appid = 1, int partition_index = 1)
+    static std::unique_ptr<mock_replica> create_replica(replica_stub *stub,
+                                                        int appid = 1,
+                                                        int partition_index = 1,
+                                                        const char *dir = "./")
     {
         gpid gpid(appid, partition_index);
         app_info app_info;
         app_info.app_type = "replica";
 
-        return make_unique<mock_replica>(stub, gpid, app_info, "./");
+        return make_unique<mock_replica>(stub, gpid, app_info, dir);
     }
 
     static void add_dup(mock_replica *r, mutation_duplicator_s_ptr dup)

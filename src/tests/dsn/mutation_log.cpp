@@ -32,7 +32,10 @@
  *     xxxx-xx-xx, author, first version
  *     xxxx-xx-xx, author, fix bug about xxx
  */
+
 #include "dist/replication/lib/mutation_log.h"
+#include "dist/replication/lib/mutation_log_utils.h"
+
 #include <gtest/gtest.h>
 
 using namespace ::dsn;
@@ -316,6 +319,11 @@ struct mutation_log_test : public ::testing::Test
         return mutation_log::replay(log, callback, end_offset);
     }
 
+    static error_code mutation_log_create_new_log_file(mutation_log_ptr log)
+    {
+        return log->create_new_log_file();
+    }
+
     const std::string log_dir;
     const dsn::gpid gpid;
 };
@@ -494,5 +502,30 @@ TEST_F(mutation_log_test, replay_multiple_files)
 
         // Ensure to have more than 1 files.
         ASSERT_TRUE(log_files.size() > 1);
+    }
+}
+
+// log_utils::open_log_file_map
+TEST_F(mutation_log_test, open_log_file_map)
+{
+    int max_log_file_mb = 1;
+
+    { // writing mutations to log which will generate multiple files
+        mutation_log_ptr mlog =
+            new mutation_log_private(log_dir, max_log_file_mb, gpid, nullptr, 1024, 512, 10000);
+        ASSERT_EQ(mlog->open(nullptr, nullptr), ERR_OK);
+
+        for (int i = 0; i < 4; i++) {
+            ASSERT_EQ(mutation_log_create_new_log_file(mlog), ERR_OK);
+        }
+
+        dsn_task_tracker_wait_all(mlog->tracker());
+    }
+
+    {
+        auto log_files = log_utils::list_all_files_or_die(log_dir);
+        auto log_file_map = log_utils::open_log_file_map(log_files);
+
+        ASSERT_EQ(log_file_map.size(), 4);
     }
 }

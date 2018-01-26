@@ -89,9 +89,8 @@ public:
     {
         if (_replica->last_durable_decree() > ent.confirmed_decree) {
             dfatal_f("the logs haven't yet duplicated were accidentally truncated [replica: "
-                     "(appid:{}, pid:{}), last_durable_decree: {}, confirmed_decree: {}]",
-                     _replica->get_gpid().get_app_id(),
-                     _replica->get_gpid().get_partition_index(),
+                     "(gpid: {}), last_durable_decree: {}, confirmed_decree: {}]",
+                     _replica->get_gpid(),
                      _replica->last_durable_decree(),
                      ent.confirmed_decree);
         }
@@ -110,23 +109,30 @@ public:
         dsn_task_tracker_wait_all(tracker()->tracker());
     }
 
+    void
+    enqueue_start_duplication(std::chrono::milliseconds delay_ms = std::chrono::milliseconds(0))
+    {
+        tasking::enqueue(LPC_DUPLICATE_MUTATIONS,
+                         tracker(),
+                         std::bind(&mutation_duplicator::start_duplication, this),
+                         gpid_to_thread_hash(_replica->get_gpid()),
+                         delay_ms);
+    }
+
     void start_duplication()
     {
         dassert(_paused, "start an already started mutation_duplicator");
         _paused = false;
 
         std::vector<std::string> log_files = log_utils::list_all_files_or_die(_private_log->dir());
-        if (log_files.empty()) {
-            // wait 10 seconds if there's no private log.
-            tasking::enqueue(LPC_DUPLICATE_MUTATIONS,
-                             tracker(),
-                             std::bind(&mutation_duplicator::start_duplication, this),
-                             gpid_to_thread_hash(_replica->get_gpid()),
-                             std::chrono::milliseconds(1000 * 10));
-        }
 
         // start duplication from the first log file.
         _current_log_file = find_log_file_with_min_index(log_files);
+        if (_current_log_file == nullptr) {
+            // wait 10 seconds if there's no private log.
+            enqueue_start_duplication(std::chrono::milliseconds(1000 * 10));
+            return;
+        }
 
         enqueue_do_duplication();
     }
@@ -142,12 +148,21 @@ public:
 
     duplication_view *mutable_view() { return _view.get(); }
 
+    // Returns: the task tracker.
+    clientlet *tracker() { return &_tracker; }
+
+    // Await for all running tasks to complete.
+    void wait_all() { dsn_task_tracker_wait_all(tracker()->tracker()); }
+
     /// ================================= Implementation =================================== ///
 
-    // REQUIRES: log_files must not be empty.
+    // RETURNS: null if there's no valid log file.
     static log_file_ptr find_log_file_with_min_index(const std::vector<std::string> &log_files)
     {
         std::map<int, log_file_ptr> log_file_map = log_utils::open_log_file_map(log_files);
+        if (log_file_map.empty()) {
+            return nullptr;
+        }
         return log_file_map.begin()->second;
     }
 
@@ -311,9 +326,6 @@ public:
             }
         }
     }
-
-    // Returns: the task tracker.
-    clientlet *tracker() { return &_tracker; }
 
 private:
     friend class mutation_duplicator_test;

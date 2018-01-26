@@ -40,7 +40,7 @@ inline std::map<int, log_file_ptr> open_log_file_map(const std::vector<std::stri
         log_file_ptr lf = log_file::open_read(fname.c_str(), err);
         if (err != ERR_OK) {
             derror(
-                "failed to read file(%s), skip it [err: %s]", lf->path().c_str(), err.to_string());
+                "failed to read file(%s), skip it [err: %s]", fname.c_str(), err.to_string());
         }
     }
     return log_file_map;
