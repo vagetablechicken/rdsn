@@ -34,10 +34,11 @@
  */
 
 #include <dsn/utility/ports.h>
+#include <dsn/utility/crc.h>
 #include <dsn/tool-api/rpc_message.h>
 #include <dsn/tool-api/network.h>
 #include <dsn/tool-api/message_parser.h>
-#include <cctype> // for isprint()
+#include <cctype>
 
 #include "task_engine.h"
 #include "transient_memory.h"
@@ -225,12 +226,12 @@ message_ex::~message_ex()
 
 error_code message_ex::error()
 {
-    dsn_error_t code;
+    dsn::error_code code;
     auto binary_hash = header->server.error_code.local_hash;
     if (binary_hash != 0 && binary_hash == ::dsn::message_ex::s_local_hash) {
-        code = header->server.error_code.local_code;
+        code = dsn::error_code(header->server.error_code.local_code);
     } else {
-        code = dsn_error_from_string(header->server.error_name, ::dsn::ERR_UNKNOWN);
+        code = error_code::try_get(header->server.error_name, dsn::ERR_UNKNOWN);
         header->server.error_code.local_hash = ::dsn::message_ex::s_local_hash;
         header->server.error_code.local_code = code;
     }
@@ -328,7 +329,7 @@ message_ex *message_ex::copy(bool clone_content, bool copy_for_receive)
         msg->buffers = buffers;
     } else {
         int total_length = body_size() + sizeof(dsn::message_header);
-        std::shared_ptr<char> recv_buffer(dsn::make_shared_array<char>(total_length));
+        std::shared_ptr<char> recv_buffer(dsn::utils::make_shared_array<char>(total_length));
         char *ptr = recv_buffer.get();
         int i = 0;
 

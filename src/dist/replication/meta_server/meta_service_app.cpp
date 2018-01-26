@@ -48,6 +48,11 @@
 
 #include "meta_service.h"
 
+#ifdef __TITLE__
+#undef __TITLE__
+#endif
+#define __TITLE__ "meta.service.app"
+
 static bool register_component_provider(const char *name,
                                         dsn::dist::distributed_lock_service::factory f)
 {
@@ -68,7 +73,6 @@ static bool register_component_provider(const char *name,
         name, f, dsn::PROVIDER_TYPE_MAIN);
 }
 
-extern "C" {
 void dsn_meta_sever_register_providers()
 {
     register_component_provider(
@@ -93,18 +97,17 @@ void dsn_meta_sever_register_providers()
         dsn::replication::server_load_balancer::create<dsn::replication::greedy_load_balancer>);
 }
 
-dsn_error_t dsn_meta_server_bridge(int argc, char **argv)
+dsn::error_code dsn_meta_server_bridge(int argc, char **argv)
 {
-    dsn::register_app<::dsn::service::meta_service_app>("meta");
+    dsn::service_app::register_factory<::dsn::service::meta_service_app>("meta");
     dsn_meta_sever_register_providers();
     return dsn::ERR_OK;
-}
 }
 
 namespace dsn {
 namespace service {
 
-meta_service_app::meta_service_app(dsn_gpid gpid) : service_app(gpid)
+meta_service_app::meta_service_app(const service_app_info *info) : service_app(info)
 {
     // create in constructor because it may be used in checker before started
     _service.reset(new replication::meta_service());
@@ -112,7 +115,7 @@ meta_service_app::meta_service_app(dsn_gpid gpid) : service_app(gpid)
 
 meta_service_app::~meta_service_app() {}
 
-error_code meta_service_app::start(int argc, char **argv)
+error_code meta_service_app::start(const std::vector<std::string> &args)
 {
     // TODO: handle the load & restore
     return _service->start();

@@ -33,6 +33,7 @@
  *     xxxx-xx-xx, author, fix bug about xxx
  */
 #include "dist/replication/lib/mutation_log.h"
+#include <dsn/utility/filesystem.h>
 #include <gtest/gtest.h>
 #include <chrono>
 #include <condition_variable>
@@ -164,8 +165,7 @@ TEST(replication, mutation_log_learn)
 
                 return true;
             },
-            offset)
-            .end_tracking();
+            offset);
         time_toc = clock.now();
         std::cout
             << "learn_point[" << lp << "]: replay time(us): "

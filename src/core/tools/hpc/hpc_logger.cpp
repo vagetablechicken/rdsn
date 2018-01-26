@@ -98,7 +98,8 @@ of each thread and buffers in the buffer list.
 #include "hpc_logger.h"
 #include <dsn/utility/singleton_store.h>
 #include <dsn/utility/utils.h>
-#include <dsn/tool-api/command.h>
+#include <dsn/utility/filesystem.h>
+#include <dsn/tool-api/command_manager.h>
 #include <cstdlib>
 #include <sstream>
 #include <fstream>

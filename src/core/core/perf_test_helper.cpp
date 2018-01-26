@@ -33,6 +33,7 @@
  *     xxxx-xx-xx, author, fix bug about xxx
  */
 #include <dsn/cpp/perf_test_helper.h>
+#include <dsn/utility/filesystem.h>
 #include <fstream>
 
 #ifdef __TITLE__
@@ -275,7 +276,7 @@ void perf_client_helper::start_next_case()
                     "exit_after_test",
                     false,
                     "dump the result and exit the process after the test is finished")) {
-                std::string data_dir(dsn_get_app_data_dir());
+                std::string data_dir(service_app::current_service_app_info().data_dir);
                 std::stringstream fns;
                 fns << "perf-result-" << ts << ".txt";
                 std::string report = ::dsn::utils::filesystem::path_combine(data_dir, fns.str());

@@ -214,12 +214,12 @@ public:
     void clear() { _buffer.assign(std::shared_ptr<char>(nullptr), 0, 0); }
     void resize(std::size_t new_size)
     {
-        std::shared_ptr<char> b(dsn::make_shared_array<char>(new_size));
+        std::shared_ptr<char> b(dsn::utils::make_shared_array<char>(new_size));
         _buffer.assign(b, 0, static_cast<int>(new_size));
     }
     void assign(const char *ptr, std::size_t size)
     {
-        std::shared_ptr<char> b(dsn::make_shared_array<char>(size));
+        std::shared_ptr<char> b(dsn::utils::make_shared_array<char>(size));
         memcpy(b.get(), ptr, size);
         _buffer.assign(b, 0, static_cast<int>(size));
     }
@@ -518,7 +518,7 @@ inline uint32_t error_code::read(apache::thrift::protocol::TProtocol *iprot)
 
         xfer += iprot->readStructEnd();
     }
-    _internal_code = dsn_error_from_string(ec_string.c_str(), ERR_UNKNOWN);
+    *this = error_code::try_get(ec_string.c_str(), ERR_UNKNOWN);
     return xfer;
 }
 

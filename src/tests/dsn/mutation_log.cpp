@@ -36,6 +36,7 @@
 #include "dist/replication/lib/mutation_log.h"
 #include "dist/replication/lib/mutation_log_utils.h"
 
+#include <dsn/utility/filesystem.h>
 #include <gtest/gtest.h>
 
 using namespace ::dsn;

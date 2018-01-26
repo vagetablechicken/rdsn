@@ -38,6 +38,7 @@
 #include <dsn/tool-api/task.h>
 #include <dsn/cpp/auto_codes.h>
 #include <dsn/utility/utils.h>
+#include <dsn/utility/filesystem.h>
 #include <gtest/gtest.h>
 #include <thread>
 #include "../core/service_engine.h"
@@ -46,27 +47,23 @@ using namespace dsn;
 
 TEST(core, dsn_error)
 {
-    ASSERT_EQ(ERR_OK, dsn_error_register("ERR_OK"));
-    ASSERT_STREQ("ERR_OK", dsn_error_to_string(ERR_OK));
+    ASSERT_EQ(ERR_OK, dsn::error_code("ERR_OK"));
+    ASSERT_STREQ("ERR_OK", ERR_OK.to_string());
 }
 
 DEFINE_THREAD_POOL_CODE(THREAD_POOL_FOR_TEST)
 TEST(core, dsn_threadpool_code)
 {
-    ASSERT_EQ(THREAD_POOL_INVALID,
-              dsn_threadpool_code_from_string("THREAD_POOL_NOT_EXIST", THREAD_POOL_INVALID));
+    ASSERT_FALSE(dsn::threadpool_code::is_exist("THREAD_POOL_NOT_EXIST"));
+    ASSERT_STREQ("THREAD_POOL_DEFAULT", THREAD_POOL_DEFAULT.to_string());
+    ASSERT_EQ(THREAD_POOL_DEFAULT, dsn::threadpool_code("THREAD_POOL_DEFAULT"));
+    ASSERT_LE(THREAD_POOL_DEFAULT, dsn::threadpool_code::max());
 
-    ASSERT_STREQ("THREAD_POOL_DEFAULT", dsn_threadpool_code_to_string(THREAD_POOL_DEFAULT));
-    ASSERT_EQ(THREAD_POOL_DEFAULT,
-              dsn_threadpool_code_from_string("THREAD_POOL_DEFAULT", THREAD_POOL_INVALID));
-    ASSERT_LE(THREAD_POOL_DEFAULT, dsn_threadpool_code_max());
+    ASSERT_STREQ("THREAD_POOL_FOR_TEST", THREAD_POOL_FOR_TEST.to_string());
+    ASSERT_EQ(THREAD_POOL_FOR_TEST, dsn::threadpool_code("THREAD_POOL_FOR_TEST"));
+    ASSERT_LE(THREAD_POOL_FOR_TEST, dsn::threadpool_code::max());
 
-    ASSERT_STREQ("THREAD_POOL_FOR_TEST", dsn_threadpool_code_to_string(THREAD_POOL_FOR_TEST));
-    ASSERT_EQ(THREAD_POOL_FOR_TEST,
-              dsn_threadpool_code_from_string("THREAD_POOL_FOR_TEST", THREAD_POOL_INVALID));
-    ASSERT_LE(THREAD_POOL_FOR_TEST, dsn_threadpool_code_max());
-
-    ASSERT_LT(0, dsn_threadpool_get_current_tid());
+    ASSERT_LT(0, dsn::utils::get_current_tid());
 }
 
 DEFINE_TASK_CODE(TASK_CODE_COMPUTE_FOR_TEST, TASK_PRIORITY_HIGH, THREAD_POOL_DEFAULT)
@@ -76,7 +73,7 @@ TEST(core, dsn_task_code)
 {
     dsn_task_type_t type;
     dsn_task_priority_t pri;
-    dsn_threadpool_code_t pool;
+    dsn::threadpool_code pool;
 
     ASSERT_EQ(TASK_CODE_INVALID,
               dsn_task_code_from_string("TASK_CODE_NOT_EXIST", TASK_CODE_INVALID));
@@ -220,7 +217,7 @@ DEFINE_TASK_CODE_AIO(LPC_AIO_TEST_WRITE, TASK_PRIORITY_COMMON, THREAD_POOL_DEFAU
 DEFINE_TASK_CODE_AIO(LPC_AIO_TEST_NFS, TASK_PRIORITY_COMMON, THREAD_POOL_DEFAULT)
 struct aio_result
 {
-    dsn_error_t err;
+    dsn::error_code err;
     size_t sz;
 };
 TEST(core, dsn_file)
@@ -242,7 +239,7 @@ TEST(core, dsn_file)
     while (true) {
         aio_result rin;
         dsn_task_t tin = dsn_file_create_aio_task(LPC_AIO_TEST_READ,
-                                                  [](dsn_error_t err, size_t sz, void *param) {
+                                                  [](dsn::error_code err, size_t sz, void *param) {
                                                       aio_result *r = (aio_result *)param;
                                                       r->err = err;
                                                       r->sz = sz;
@@ -269,7 +266,7 @@ TEST(core, dsn_file)
 
         aio_result rout;
         dsn_task_t tout = dsn_file_create_aio_task(LPC_AIO_TEST_WRITE,
-                                                   [](dsn_error_t err, size_t sz, void *param) {
+                                                   [](dsn::error_code err, size_t sz, void *param) {
                                                        aio_result *r = (aio_result *)param;
                                                        r->err = err;
                                                        r->sz = sz;
@@ -328,7 +325,7 @@ TEST(core, dsn_nfs)
 
         aio_result r;
         dsn_task_t t = dsn_file_create_aio_task(LPC_AIO_TEST_NFS,
-                                                [](dsn_error_t err, size_t sz, void *param) {
+                                                [](dsn::error_code err, size_t sz, void *param) {
                                                     aio_result *r = (aio_result *)param;
                                                     r->err = err;
                                                     r->sz = sz;
@@ -369,7 +366,7 @@ TEST(core, dsn_nfs)
 
         aio_result r;
         dsn_task_t t = dsn_file_create_aio_task(LPC_AIO_TEST_NFS,
-                                                [](dsn_error_t err, size_t sz, void *param) {
+                                                [](dsn::error_code err, size_t sz, void *param) {
                                                     aio_result *r = (aio_result *)param;
                                                     r->err = err;
                                                     r->sz = sz;
@@ -396,7 +393,7 @@ TEST(core, dsn_nfs)
 
         aio_result r;
         dsn_task_t t = dsn_file_create_aio_task(LPC_AIO_TEST_NFS,
-                                                [](dsn_error_t err, size_t sz, void *param) {
+                                                [](dsn::error_code err, size_t sz, void *param) {
                                                     aio_result *r = (aio_result *)param;
                                                     r->err = err;
                                                     r->sz = sz;
@@ -468,18 +465,15 @@ TEST(core, dsn_system)
     }
 
     {
-        dsn_app_info apps[20];
-        int count = dsn_get_all_apps(apps, 20);
-        ASSERT_EQ(app_count, count);
+        std::vector<service_app *> apps;
+        service_app::get_all_service_apps(&apps);
+        ASSERT_EQ(app_count, apps.size());
         std::map<std::string, int> type_to_count;
-        for (int i = 0; i < count; ++i) {
-            type_to_count[apps[i].type] += 1;
+        for (int i = 0; i < apps.size(); ++i) {
+            type_to_count[apps[i]->info().type] += 1;
         }
 
         ASSERT_EQ(type_count, static_cast<int>(type_to_count.size()));
         ASSERT_EQ(5, type_to_count["test"]);
-
-        count = dsn_get_all_apps(apps, 3);
-        ASSERT_EQ(app_count, count);
     }
 }

@@ -37,18 +37,18 @@
 
 #include <dsn/service_api_c.h>
 #include <dsn/cpp/auto_codes.h>
-#include <dsn/utility/utils.h>
 #include <dsn/cpp/rpc_stream.h>
 #include <dsn/cpp/serialization.h>
 #include <dsn/cpp/zlocks.h>
+#include <dsn/cpp/callocator.h>
+#include <dsn/utility/utils.h>
 #include <dsn/utility/autoref_ptr.h>
 #include <dsn/utility/synchronize.h>
 #include <dsn/utility/link.h>
-#include <dsn/cpp/callocator.h>
+#include <dsn/utility/optional.h>
 #include <set>
 #include <map>
 #include <thread>
-#include <dsn/cpp/optional.h>
 
 namespace dsn {
 typedef std::function<void(error_code, size_t)> aio_handler;
@@ -108,10 +108,7 @@ public:
         dsn_task_call(_task, static_cast<int>(delay.count()));
     }
 
-    void enqueue_aio(error_code err, size_t size) const
-    {
-        dsn_file_task_enqueue(_task, err.get(), size);
-    }
+    void enqueue_aio(error_code err, size_t size) const { dsn_file_task_enqueue(_task, err, size); }
 
     dsn_message_t response()
     {
@@ -122,7 +119,7 @@ public:
 
     void enqueue_rpc_response(error_code err, dsn_message_t resp) const
     {
-        dsn_rpc_enqueue_response(_task, err.get(), resp);
+        dsn_rpc_enqueue_response(_task, err, resp);
     }
 
 private:
@@ -158,7 +155,7 @@ public:
     }
 
     static void
-    exec_rpc_response(dsn_error_t err, dsn_message_t req, dsn_message_t resp, void *task)
+    exec_rpc_response(dsn::error_code err, dsn_message_t req, dsn_message_t resp, void *task)
     {
         auto t = static_cast<transient_safe_task *>(task);
         dbg_dassert(t->_handler.is_some(), "_handler is missing");
@@ -167,7 +164,7 @@ public:
         t->release_ref(); // added upon callback exec_rpc_response registration
     }
 
-    static void exec_aio(dsn_error_t err, size_t sz, void *task)
+    static void exec_aio(dsn::error_code err, size_t sz, void *task)
     {
         auto t = static_cast<transient_safe_task *>(task);
         dbg_dassert(t->_handler.is_some(), "_handler is missing");

@@ -72,15 +72,15 @@ __thread uint16_t tls_dsn_lower32_task_id_mask = 0;
         if (worker != nullptr) {
             dassert(worker->pool()->node() == node,
                     "worker not belonging to the given node: %s vs %s",
-                    worker->pool()->node()->name(),
-                    node->name());
+                    worker->pool()->node()->full_name(),
+                    node->full_name());
         }
 
         if (queue != nullptr) {
             dassert(queue->pool()->node() == node,
                     "queue not belonging to the given node: %s vs %s",
-                    queue->pool()->node()->name(),
-                    node->name());
+                    queue->pool()->node()->full_name(),
+                    node->full_name());
         }
 
         tls_dsn.node = node;
@@ -226,9 +226,6 @@ void task::exec_internal()
         }
 
         tls_dsn.current_task = parent_task;
-    } else {
-        // task cancelled, so
-        _error.end_tracking();
     }
 
     // signal_waiters(); [
@@ -359,8 +356,6 @@ bool task::cancel(bool wait_until_finished, /*out*/ bool *finished /*= nullptr*/
 
         spec().on_task_cancelled.execute(this);
         signal_waiters();
-
-        _error.end_tracking();
     }
 
     if (finished)
@@ -372,7 +367,7 @@ bool task::cancel(bool wait_until_finished, /*out*/ bool *finished /*= nullptr*/
 const char *task::get_current_node_name()
 {
     auto n = get_current_node2();
-    return n ? n->name() : "unknown";
+    return n ? n->full_name() : "unknown";
 }
 
 void task::enqueue()
@@ -393,7 +388,7 @@ void task::enqueue(task_worker_pool *pool)
             "(1). thread pool not designatd in '[%s] pools'; "
             "(2). the caller is executed in io threads "
             "which is forbidden unless you explicitly set [task.%s].allow_inline = true",
-            dsn_threadpool_code_to_string(_spec->pool_code),
+            _spec->pool_code.to_string(),
             _node->spec().config_section.c_str(),
             _spec->name.c_str());
 
@@ -609,8 +604,10 @@ struct hook_context : public transient_object
     uint64_t new_context;
 };
 
-static void
-rpc_response_task_hook_callback(dsn_error_t err, dsn_message_t req, dsn_message_t resp, void *ctx)
+static void rpc_response_task_hook_callback(dsn::error_code err,
+                                            dsn_message_t req,
+                                            dsn_message_t resp,
+                                            void *ctx)
 {
     auto nc = (hook_context *)ctx;
     nc->new_callback(nc->old_callback, err, req, resp, nc->old_context, nc->new_context);

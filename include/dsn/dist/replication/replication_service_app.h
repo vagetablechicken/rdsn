@@ -37,7 +37,7 @@
 
 #include <dsn/cpp/service_app.h>
 
-extern "C" dsn_error_t dsn_layer2_stateful_type1_bridge(int argc, char **argv);
+dsn::error_code dsn_layer2_stateful_type1_bridge(int argc, char **argv);
 
 namespace dsn {
 namespace replication {
@@ -53,11 +53,11 @@ typedef dsn::ref_ptr<replica_stub> replica_stub_ptr;
 class replication_service_app : public ::dsn::service_app
 {
 public:
-    replication_service_app(dsn_gpid gpid);
+    replication_service_app(const dsn::service_app_info *info);
 
     virtual ~replication_service_app(void);
 
-    virtual ::dsn::error_code start(int argc, char **argv) override;
+    virtual ::dsn::error_code start(const std::vector<std::string> &args) override;
 
     virtual ::dsn::error_code stop(bool cleanup = false) override;
 

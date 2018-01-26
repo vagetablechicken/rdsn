@@ -37,8 +37,8 @@
 
 #include <dsn/cpp/service_app.h>
 
-extern "C" dsn_error_t dsn_meta_server_bridge(int argc, char **argv);
-extern "C" void dsn_meta_sever_register_providers();
+dsn::error_code dsn_meta_server_bridge(int argc, char **argv);
+void dsn_meta_sever_register_providers();
 
 namespace dsn {
 namespace replication {
@@ -58,10 +58,10 @@ namespace service {
 class meta_service_app : public service_app
 {
 public:
-    meta_service_app(dsn_gpid gpid);
+    meta_service_app(const service_app_info *info);
     virtual ~meta_service_app();
 
-    virtual ::dsn::error_code start(int argc, char **argv) override;
+    virtual ::dsn::error_code start(const std::vector<std::string> &args) override;
 
     virtual ::dsn::error_code stop(bool cleanup = false) override;
 

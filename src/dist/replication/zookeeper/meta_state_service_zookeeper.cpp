@@ -162,13 +162,8 @@ meta_state_service_zookeeper::~meta_state_service_zookeeper()
 
 error_code meta_state_service_zookeeper::initialize(const std::vector<std::string> &)
 {
-    dsn_app_info node;
-    if (!dsn_get_current_app_info(&node)) {
-        derror("get current app info failed, can not init meta_state_service_zookeeper");
-        return ERR_CORRUPTION;
-    }
-
-    _session = zookeeper_session_mgr::instance().get_session(&node);
+    _session =
+        zookeeper_session_mgr::instance().get_session(service_app::current_service_app_info());
     _zoo_state = _session->attach(this,
                                   std::bind(&meta_state_service_zookeeper::on_zoo_session_evt,
                                             ref_this(this),
@@ -419,7 +414,7 @@ void meta_state_service_zookeeper::visit_zookeeper_internal(ref_this,
             blob data;
             if (ZOK == op->_output.error) {
                 std::shared_ptr<char> buf(
-                    dsn::make_shared_array<char>(op->_output.get_op.value_length));
+                    dsn::utils::make_shared_array<char>(op->_output.get_op.value_length));
                 memcpy(buf.get(), op->_output.get_op.value, op->_output.get_op.value_length);
                 data.assign(buf, 0, op->_output.get_op.value_length);
             }

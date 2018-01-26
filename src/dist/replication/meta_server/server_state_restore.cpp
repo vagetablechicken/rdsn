@@ -33,6 +33,11 @@
 #include "dist/replication/meta_server/meta_service.h"
 #include "dist/replication/meta_server/server_state.h"
 
+#ifdef __TITLE__
+#undef __TITLE__
+#endif
+#define __TITLE__ "server.state.restore"
+
 using namespace dsn::dist::block_service;
 
 namespace dsn {
@@ -156,7 +161,6 @@ void server_state::restore_app(dsn_message_t msg)
             // if err != ERR_OK, then sync_app_from_backup_media ecounter some error
             if (err != ERR_OK) {
                 derror("sync app_info_data from backup media failed with err(%s)", err.to_string());
-                err.end_tracking();
                 ec = err;
             } else {
                 auto pair = restore_app_info(msg, request, app_info_data);

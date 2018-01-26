@@ -36,7 +36,7 @@
 #pragma once
 
 #include <dsn/cpp/task_helper.h>
-#include <dsn/cpp/function_traits.h>
+#include <dsn/utility/function_traits.h>
 
 namespace dsn {
 /*
@@ -46,7 +46,7 @@ there can be multiple clientlet in the system
 class clientlet
 {
 public:
-    clientlet(int task_bucket_count = 13);
+    clientlet(int task_bucket_count = 1);
     virtual ~clientlet();
 
     dsn_task_tracker_t tracker() const { return _tracker; }

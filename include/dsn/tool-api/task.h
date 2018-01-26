@@ -44,6 +44,12 @@
 #include <dsn/cpp/callocator.h>
 #include <dsn/cpp/auto_codes.h>
 #include <dsn/utility/utils.h>
+#include <dsn/utility/binary_writer.h>
+
+#ifdef __TITLE__
+#undef __TITLE__
+#endif
+#define __TITLE__ "task"
 
 namespace dsn {
 
@@ -292,7 +298,7 @@ protected:
 };
 
 typedef void (*dsn_rpc_response_handler_replace_t)(dsn_rpc_response_handler_t callback,
-                                                   dsn_error_t err,
+                                                   dsn::error_code err,
                                                    dsn_message_t req,
                                                    dsn_message_t resp,
                                                    void *context,
@@ -323,9 +329,7 @@ public:
     void exec() override
     {
         if (_cb) {
-            _cb(_error.get(), _request, _response, _context);
-        } else {
-            _error.end_tracking();
+            _cb(_error, _request, _response, _context);
         }
     }
 
@@ -405,7 +409,7 @@ public:
     void collapse()
     {
         if (!_unmerged_write_buffers.empty()) {
-            std::shared_ptr<char> buffer(dsn::make_shared_array<char>(_aio->buffer_size));
+            std::shared_ptr<char> buffer(dsn::utils::make_shared_array<char>(_aio->buffer_size));
             _merged_write_buffer_holder.assign(buffer, 0, _aio->buffer_size);
             _aio->buffer = buffer.get();
             copy_to(buffer.get());
@@ -415,9 +419,7 @@ public:
     virtual void exec() override // aio completed
     {
         if (nullptr != _cb) {
-            _cb(_error.get(), _transferred_size, _context);
-        } else {
-            _error.end_tracking();
+            _cb(_error, _transferred_size, _context);
         }
     }
 

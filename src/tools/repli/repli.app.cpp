@@ -34,6 +34,7 @@
  */
 
 #include <dsn/utility/utils.h>
+#include <dsn/utility/filesystem.h>
 #include <dsn/utility/configuration.h>
 
 #include "dist/replication/lib/mutation_log.h"
@@ -47,7 +48,7 @@ namespace service {
 
 using namespace ::dsn::replication;
 
-repli_app::repli_app(dsn_gpid gpid) : service_app(gpid) {}
+repli_app::repli_app(const service_app_info *info) : service_app(info) {}
 
 void repli_app::usage()
 {
@@ -58,7 +59,7 @@ void repli_app::usage()
     std::cout << "---------------------------------" << std::endl;
 }
 
-error_code repli_app::start(int argc, char **argv)
+error_code repli_app::start(const std::vector<std::string> &args)
 {
     if (s_args.size() == 0) {
         g_done = true;
@@ -121,7 +122,7 @@ error_code repli_app::start(int argc, char **argv)
                                    },
                                    offset);
         std::cout << "}" << std::endl;
-        std::cout << "read_return_err=" << dsn_error_to_string(err) << std::endl;
+        std::cout << "read_return_err=" << err.to_string() << std::endl;
         std::cout << "read_end_offset=" << offset << std::endl;
     } else if (cmd == "config_get") {
         if (s_args.size() < 4) {

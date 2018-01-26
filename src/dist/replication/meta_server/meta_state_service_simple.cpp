@@ -36,9 +36,15 @@
 
 #include "meta_state_service_simple.h"
 #include <dsn/tool-api/task.h>
+#include <dsn/utility/filesystem.h>
 
 #include <stack>
 #include <utility>
+
+#ifdef __TITLE__
+#undef __TITLE__
+#endif
+#define __TITLE__ "meta.state.service.simple"
 
 namespace dsn {
 namespace dist {
@@ -236,7 +242,8 @@ error_code meta_state_service_simple::apply_transaction(
 // Restore data from WAL file.
 error_code meta_state_service_simple::initialize(const std::vector<std::string> &args)
 {
-    const char *work_dir = args.empty() ? dsn_get_app_data_dir() : args[0].c_str();
+    const char *work_dir =
+        args.empty() ? service_app::current_service_app_info().data_dir.c_str() : args[0].c_str();
 
     _offset = 0;
     std::string log_path = dsn::utils::filesystem::path_combine(work_dir, "meta_state_service.log");
@@ -250,7 +257,7 @@ error_code meta_state_service_simple::initialize(const std::vector<std::string> 
                 if (header.magic != log_header::default_magic) {
                     break;
                 }
-                std::shared_ptr<char> buffer(dsn::make_shared_array<char>(header.size));
+                std::shared_ptr<char> buffer(dsn::utils::make_shared_array<char>(header.size));
                 if (fread(buffer.get(), header.size, 1, fd) != 1) {
                     break;
                 }
@@ -265,21 +272,21 @@ error_code meta_state_service_simple::initialize(const std::vector<std::string> 
                     std::string node;
                     blob data;
                     create_node_log::parse(reader, node, data);
-                    create_node_internal(node, data).end_tracking();
+                    create_node_internal(node, data);
                     break;
                 }
                 case operation_type::delete_node: {
                     std::string node;
                     bool recursively_delete;
                     delete_node_log::parse(reader, node, recursively_delete);
-                    delete_node_internal(node, recursively_delete).end_tracking();
+                    delete_node_internal(node, recursively_delete);
                     break;
                 }
                 case operation_type::set_data: {
                     std::string node;
                     blob data;
                     set_data_log::parse(reader, node, data);
-                    set_data_internal(node, data).end_tracking();
+                    set_data_internal(node, data);
                     break;
                 }
                 default:
@@ -396,7 +403,7 @@ task_ptr meta_state_service_simple::submit_transaction(
             cb_code, tracker, [=]() { cb_transaction(ERR_INCONSISTENT_STATE); });
     } else {
         // apply
-        std::shared_ptr<char> batch(dsn::make_shared_array<char>(total_size));
+        std::shared_ptr<char> batch(dsn::utils::make_shared_array<char>(total_size));
         char *dest = batch.get();
         std::for_each(batch_buffer.begin(), batch_buffer.end(), [&dest](const blob &entry) {
             memcpy(dest, entry.data(), entry.length());

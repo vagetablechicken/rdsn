@@ -48,13 +48,13 @@
 #include <dsn/utility/utils.h>
 
 #include <dsn/utility/configuration.h>
-#include "command_manager.h"
+#include <dsn/utility/filesystem.h>
+#include <dsn/tool-api/command_manager.h>
 #include "service_engine.h"
 #include "rpc_engine.h"
 #include "disk_engine.h"
 #include "task_engine.h"
 #include "coredump.h"
-#include "crc.h"
 #include "transient_memory.h"
 #include <fstream>
 
@@ -90,76 +90,11 @@ static struct _all_info_
 
 } dsn_all;
 
-//------------------------------------------------------------------------------
-//
-// common types
-//
-//------------------------------------------------------------------------------
-struct dsn_error_placeholder
-{
-};
-class error_code_mgr : public ::dsn::utils::customized_id_mgr<dsn_error_placeholder>
-{
-public:
-    error_code_mgr()
-    {
-        auto err = register_id("ERR_OK"); // make sure ERR_OK is always registered first
-        dassert(0 == err, "register_id failed, err = %d", err);
-    }
-};
-
-DSN_API dsn_error_t dsn_error_register(const char *name)
-{
-    dassert(strlen(name) < DSN_MAX_ERROR_CODE_NAME_LENGTH,
-            "error code '%s' is too long - length must be smaller than %d",
-            name,
-            DSN_MAX_ERROR_CODE_NAME_LENGTH);
-    return static_cast<dsn_error_t>(error_code_mgr::instance().register_id(name));
-}
-
-DSN_API const char *dsn_error_to_string(dsn_error_t err)
-{
-    return error_code_mgr::instance().get_name(static_cast<int>(err));
-}
-
-DSN_API dsn_error_t dsn_error_from_string(const char *s, dsn_error_t default_err)
-{
-    auto r = error_code_mgr::instance().get_id(s);
-    return r == -1 ? default_err : r;
-}
-
 DSN_API volatile int *dsn_task_queue_virtual_length_ptr(dsn_task_code_t code, int hash)
 {
     return dsn::task::get_current_node()->computation()->get_task_queue_virtual_length_ptr(code,
                                                                                            hash);
 }
-
-// use ::dsn::threadpool_code2; for parsing purpose
-DSN_API dsn_threadpool_code_t dsn_threadpool_code_register(const char *name)
-{
-    return static_cast<dsn_threadpool_code_t>(
-        ::dsn::utils::customized_id_mgr<::dsn::threadpool_code2_>::instance().register_id(name));
-}
-
-DSN_API const char *dsn_threadpool_code_to_string(dsn_threadpool_code_t pool_code)
-{
-    return ::dsn::utils::customized_id_mgr<::dsn::threadpool_code2_>::instance().get_name(
-        static_cast<int>(pool_code));
-}
-
-DSN_API dsn_threadpool_code_t dsn_threadpool_code_from_string(const char *s,
-                                                              dsn_threadpool_code_t default_code)
-{
-    auto r = ::dsn::utils::customized_id_mgr<::dsn::threadpool_code2_>::instance().get_id(s);
-    return r == -1 ? default_code : r;
-}
-
-DSN_API int dsn_threadpool_code_max()
-{
-    return ::dsn::utils::customized_id_mgr<::dsn::threadpool_code2_>::instance().max_value();
-}
-
-DSN_API int dsn_threadpool_get_current_tid() { return ::dsn::utils::get_current_tid(); }
 
 struct task_code_placeholder
 {
@@ -167,7 +102,7 @@ struct task_code_placeholder
 DSN_API dsn_task_code_t dsn_task_code_register(const char *name,
                                                dsn_task_type_t type,
                                                dsn_task_priority_t pri,
-                                               dsn_threadpool_code_t pool)
+                                               int pool)
 {
     dassert(strlen(name) < DSN_MAX_TASK_CODE_NAME_LENGTH,
             "task code '%s' is too long - length must be smaller than %d",
@@ -175,14 +110,14 @@ DSN_API dsn_task_code_t dsn_task_code_register(const char *name,
             DSN_MAX_TASK_CODE_NAME_LENGTH);
     auto r = static_cast<dsn_task_code_t>(
         ::dsn::utils::customized_id_mgr<task_code_placeholder>::instance().register_id(name));
-    ::dsn::task_spec::register_task_code(r, type, pri, pool);
+    ::dsn::task_spec::register_task_code(r, type, pri, dsn::threadpool_code(pool));
     return r;
 }
 
 DSN_API void dsn_task_code_query(dsn_task_code_t code,
                                  dsn_task_type_t *ptype,
                                  dsn_task_priority_t *ppri,
-                                 dsn_threadpool_code_t *ppool)
+                                 dsn::threadpool_code *ppool)
 {
     auto sp = ::dsn::task_spec::get(code);
     dassert(sp != nullptr, "task code = %d", code);
@@ -194,7 +129,7 @@ DSN_API void dsn_task_code_query(dsn_task_code_t code,
         *ppool = sp->pool_code;
 }
 
-DSN_API void dsn_task_code_set_threadpool(dsn_task_code_t code, dsn_threadpool_code_t pool)
+DSN_API void dsn_task_code_set_threadpool(dsn_task_code_t code, dsn::threadpool_code pool)
 {
     auto sp = ::dsn::task_spec::get(code);
     dassert(sp != nullptr, "task code = %d", code);
@@ -315,40 +250,6 @@ DSN_API void dsn_coredump()
 {
     ::dsn::utils::coredump::write();
     ::abort();
-}
-
-DSN_API uint32_t dsn_crc32_compute(const void *ptr, size_t size, uint32_t init_crc)
-{
-    return ::dsn::utils::crc32::compute(ptr, size, init_crc);
-}
-
-DSN_API uint32_t dsn_crc32_concatenate(uint32_t xy_init,
-                                       uint32_t x_init,
-                                       uint32_t x_final,
-                                       size_t x_size,
-                                       uint32_t y_init,
-                                       uint32_t y_final,
-                                       size_t y_size)
-{
-    return ::dsn::utils::crc32::concatenate(
-        0, x_init, x_final, (uint64_t)x_size, y_init, y_final, (uint64_t)y_size);
-}
-
-DSN_API uint64_t dsn_crc64_compute(const void *ptr, size_t size, uint64_t init_crc)
-{
-    return ::dsn::utils::crc64::compute(ptr, size, init_crc);
-}
-
-DSN_API uint64_t dsn_crc64_concatenate(uint32_t xy_init,
-                                       uint64_t x_init,
-                                       uint64_t x_final,
-                                       size_t x_size,
-                                       uint64_t y_init,
-                                       uint64_t y_final,
-                                       size_t y_size)
-{
-    return ::dsn::utils::crc64::concatenate(
-        0, x_init, x_final, (uint64_t)x_size, y_init, y_final, (uint64_t)y_size);
 }
 
 DSN_API dsn_task_t dsn_task_create(dsn_task_code_t code,
@@ -474,10 +375,7 @@ DSN_API bool dsn_task_wait_timeout(dsn_task_t task, int timeout_milliseconds)
     return ((::dsn::task *)(task))->wait(timeout_milliseconds);
 }
 
-DSN_API dsn_error_t dsn_task_error(dsn_task_t task)
-{
-    return ((::dsn::task *)(task))->error().get();
-}
+DSN_API dsn::error_code dsn_task_error(dsn_task_t task) { return ((::dsn::task *)(task))->error(); }
 
 //------------------------------------------------------------------------------
 //
@@ -746,7 +644,7 @@ DSN_API void dsn_rpc_call_one_way(dsn_address_t server, dsn_message_t request)
     ::dsn::task::get_current_rpc()->call(msg, nullptr);
 }
 
-DSN_API void dsn_rpc_reply(dsn_message_t response, dsn_error_t err)
+DSN_API void dsn_rpc_reply(dsn_message_t response, dsn::error_code err)
 {
     auto msg = ((::dsn::message_ex *)response);
     ::dsn::task::get_current_rpc()->reply(msg, err);
@@ -772,7 +670,8 @@ DSN_API dsn_message_t dsn_rpc_get_response(dsn_task_t rpc_call)
         return nullptr;
 }
 
-DSN_API void dsn_rpc_enqueue_response(dsn_task_t rpc_call, dsn_error_t err, dsn_message_t response)
+DSN_API void
+dsn_rpc_enqueue_response(dsn_task_t rpc_call, dsn::error_code err, dsn_message_t response)
 {
     ::dsn::rpc_response_task *task = (::dsn::rpc_response_task *)rpc_call;
     dassert(task->spec().type == TASK_TYPE_RPC_RESPONSE,
@@ -793,12 +692,12 @@ DSN_API dsn_handle_t dsn_file_open(const char *file_name, int flag, int pmode)
     return ::dsn::task::get_current_disk()->open(file_name, flag, pmode);
 }
 
-DSN_API dsn_error_t dsn_file_close(dsn_handle_t file)
+DSN_API dsn::error_code dsn_file_close(dsn_handle_t file)
 {
     return ::dsn::task::get_current_disk()->close(file);
 }
 
-DSN_API dsn_error_t dsn_file_flush(dsn_handle_t file)
+DSN_API dsn::error_code dsn_file_flush(dsn_handle_t file)
 {
     return ::dsn::task::get_current_disk()->flush(file);
 }
@@ -940,7 +839,7 @@ DSN_API size_t dsn_file_get_io_size(dsn_task_t cb_task)
     return ((::dsn::aio_task *)task)->get_transferred_size();
 }
 
-DSN_API void dsn_file_task_enqueue(dsn_task_t cb_task, dsn_error_t err, size_t size)
+DSN_API void dsn_file_task_enqueue(dsn_task_t cb_task, dsn::error_code err, size_t size)
 {
     ::dsn::task *task = (::dsn::task *)cb_task;
     dassert(task->spec().type == TASK_TYPE_AIO,
@@ -1056,31 +955,15 @@ NORETURN DSN_API void dsn_exit(int code)
 #endif
 }
 
-DSN_API bool dsn_register_app(dsn_app *app_type)
-{
-    dsn_app *app;
-    auto &store = ::dsn::utils::singleton_store<std::string, dsn_app *>::instance();
-    if (store.get(app_type->type_name, app)) {
-        dassert(false, "app type %s is already registered", app_type->type_name);
-        return false;
-    }
-
-    app = new dsn_app();
-    *app = *app_type;
-    auto r = store.put(app_type->type_name, app);
-    dassert(r, "app type %s is already registered", app_type->type_name);
-    return r;
-}
-
-DSN_API bool dsn_mimic_app(const char *app_name, int index)
+DSN_API bool dsn_mimic_app(const char *app_role, int index)
 {
     auto worker = ::dsn::task::get_current_worker2();
     dassert(worker == nullptr, "cannot call dsn_mimic_app in rDSN threads");
 
     auto cnode = ::dsn::task::get_current_node2();
     if (cnode != nullptr) {
-        const std::string &name = cnode->spec().name;
-        if (cnode->spec().role_name == std::string(app_name) && cnode->spec().index == index) {
+        const std::string &name = cnode->spec().full_name;
+        if (cnode->spec().role_name == std::string(app_role) && cnode->spec().index == index) {
             return true;
         } else {
             derror("current thread is already attached to another rDSN app %s", name.c_str());
@@ -1090,51 +973,16 @@ DSN_API bool dsn_mimic_app(const char *app_name, int index)
 
     auto nodes = ::dsn::service_engine::instance().get_all_nodes();
     for (auto &n : nodes) {
-        if (n.second->spec().role_name == std::string(app_name) &&
+        if (n.second->spec().role_name == std::string(app_role) &&
             n.second->spec().index == index) {
             ::dsn::task::set_tls_dsn_context(n.second, nullptr, nullptr);
             return true;
         }
     }
 
-    derror("cannot find host app %s with index %d", app_name, index);
+    derror("cannot find host app %s with index %d", app_role, index);
     return false;
 }
-
-DSN_API const char *dsn_get_app_data_dir(dsn_gpid gpid)
-{
-    auto info = dsn_get_app_info_ptr(gpid);
-    return info ? info->data_dir : nullptr;
-}
-
-DSN_API bool dsn_get_current_app_info(/*out*/ dsn_app_info *app_info)
-{
-    auto info = dsn_get_app_info_ptr(dsn_gpid{0});
-    if (info) {
-        memcpy(app_info, info, sizeof(*info));
-        return true;
-    } else
-        return false;
-}
-
-DSN_API dsn_app_info *dsn_get_app_info_ptr(dsn_gpid gpid)
-{
-    auto cnode = ::dsn::task::get_current_node2();
-    if (cnode != nullptr) {
-        if (gpid.value == 0)
-            return cnode->get_app_info();
-        else {
-            dassert(false, "");
-            return nullptr;
-        }
-    } else
-        return nullptr;
-}
-
-::dsn::utils::notify_event s_loader_event;
-DSN_API void dsn_app_loader_signal() { s_loader_event.notify(); }
-
-DSN_API void dsn_app_loader_wait() { s_loader_event.wait(); }
 
 //
 // run the system with arguments
@@ -1248,10 +1096,6 @@ bool run(const char *config_file,
 #endif
         getchar();
     }
-
-    // regiser external app roles by loading all shared libraries
-    // so all code and app factories are automatically registered
-    dsn::service_spec::load_app_shared_libraries();
 
     for (int i = 0; i <= dsn_task_code_max(); i++) {
         dsn_all.task_specs.push_back(::dsn::task_spec::get(i));
@@ -1383,12 +1227,6 @@ bool run(const char *config_file,
         exit(1);
     }
 
-    // start cli if necessary
-    if (dsn_all.config->get_value<bool>(
-            "core", "cli_local", true, "whether to enable local command line interface (cli)")) {
-        ::dsn::command_manager::instance().start_local_cli();
-    }
-
     if (dsn_all.config->get_value<bool>(
             "core",
             "cli_remote",
@@ -1398,23 +1236,24 @@ bool run(const char *config_file,
     }
 
     // register local cli commands
-    ::dsn::register_command("config-dump",
-                            "config-dump - dump configuration",
-                            "config-dump [to-this-config-file]",
-                            [](const std::vector<std::string> &args) {
-                                std::ostringstream oss;
-                                std::ofstream off;
-                                std::ostream *os = &oss;
-                                if (args.size() > 0) {
-                                    off.open(args[0]);
-                                    os = &off;
+    ::dsn::command_manager::instance().register_command({"config-dump"},
+                                                        "config-dump - dump configuration",
+                                                        "config-dump [to-this-config-file]",
+                                                        [](const std::vector<std::string> &args) {
+                                                            std::ostringstream oss;
+                                                            std::ofstream off;
+                                                            std::ostream *os = &oss;
+                                                            if (args.size() > 0) {
+                                                                off.open(args[0]);
+                                                                os = &off;
 
-                                    oss << "config dump to file " << args[0] << std::endl;
-                                }
+                                                                oss << "config dump to file "
+                                                                    << args[0] << std::endl;
+                                                            }
 
-                                dsn_all.config->dump(*os);
-                                return oss.str();
-                            });
+                                                            dsn_all.config->dump(*os);
+                                                            return oss.str();
+                                                        });
 
     // invoke customized init after apps are created
     dsn::tools::sys_init_after_app_created.execute();
@@ -1435,27 +1274,33 @@ bool run(const char *config_file,
     return true;
 }
 
-DSN_API int dsn_get_all_apps(dsn_app_info *info_buffer, int count)
-{
-    auto &as = ::dsn::service_engine::fast_instance().get_all_nodes();
-    int i = 0;
-    for (auto &kv : as) {
-        if (i >= count)
-            return (int)as.size();
-
-        dsn::service_node *node = kv.second;
-        dsn_app_info &info = info_buffer[i++];
-        info.app.app_context_ptr = node->get_app_context_ptr();
-        info.app_id = node->id();
-        info.index = node->spec().index;
-        info.primary_address = node->rpc(nullptr)->primary_address().c_addr();
-        strncpy(info.role, node->spec().role_name.c_str(), sizeof(info.role));
-        strncpy(info.type, node->spec().type.c_str(), sizeof(info.type));
-        strncpy(info.name, node->spec().name.c_str(), sizeof(info.name));
-    }
-    return i;
+namespace dsn {
+configuration_ptr get_main_config() { return dsn_all.config; }
 }
 
 namespace dsn {
-configuration_ptr get_main_config() { return dsn_all.config; }
+service_app *service_app::new_service_app(const std::string &type,
+                                          const dsn::service_app_info *info)
+{
+    return dsn::utils::factory_store<service_app>::create(
+        type.c_str(), dsn::PROVIDER_TYPE_MAIN, info);
+}
+
+service_app::service_app(const dsn::service_app_info *info) : _info(info), _started(false) {}
+
+const service_app_info &service_app::info() const { return *_info; }
+
+const service_app_info &service_app::current_service_app_info()
+{
+    return tls_dsn.node->get_service_app_info();
+}
+
+void service_app::get_all_service_apps(std::vector<service_app *> *apps)
+{
+    const service_nodes_by_app_id &nodes = dsn_all.engine->get_all_nodes();
+    for (const auto &kv : nodes) {
+        const service_node *node = kv.second;
+        apps->push_back(const_cast<service_app *>(node->get_service_app()));
+    }
+}
 }
