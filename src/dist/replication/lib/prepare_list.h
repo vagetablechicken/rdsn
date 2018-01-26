@@ -67,11 +67,6 @@ public:
     void reset(decree init_decree);
     void truncate(decree init_decree);
 
-    // Possible error:
-    //  - ERR_VERSION_OUTDATED: returned if the mutation's ballot is outdated, or the log
-    //                          is already committed.
-    error_s check_if_valid_to_prepare(mutation_ptr &mu);
-
     //
     // for two-phase commit
     //

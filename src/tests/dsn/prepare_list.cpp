@@ -24,7 +24,9 @@
  * THE SOFTWARE.
  */
 
-#include "test_utils.h"
+#include <gtest/gtest.h>
+
+#include "dist/replication/lib/prepare_list.h"
 
 using namespace dsn::replication;
 
@@ -33,4 +35,35 @@ class prepare_list_test : public ::testing::Test
 public:
 };
 
-TEST_F(prepare_list_test, check_if_valid_to_prepare) {}
+mutation_ptr new_mut(int64_t decree, int64_t ballot, int64_t last_committed)
+{
+    mutation_ptr mut = new mutation;
+    mut->data.header.decree = decree;
+    mut->data.header.ballot = ballot;
+    mut->data.header.last_committed_decree = last_committed;
+    mut->set_logged();
+    return mut;
+}
+
+TEST_F(prepare_list_test, prepare_PS_INACTIVE)
+{
+    struct TestData
+    {
+        std::vector<mutation_ptr> muts;
+
+        int64_t wlast;
+        int64_t wcommit;
+    } tests[] = {
+        {{new_mut(1, 1, 0), new_mut(2, 2, 1), new_mut(3, 3, 2)}, 3, 2},
+    };
+
+    for (auto tt : tests) {
+        prepare_list list(0, 1000, [](mutation_ptr &) {});
+        for (mutation_ptr mut : tt.muts) {
+            list.prepare(mut, partition_status::PS_INACTIVE);
+        }
+
+        ASSERT_EQ(list.max_decree(), tt.wlast);
+        ASSERT_EQ(list.last_committed_decree(), tt.wcommit);
+    }
+}

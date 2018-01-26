@@ -34,9 +34,6 @@
  */
 
 #include "prepare_list.h"
-#include "mutation.h"
-
-#include <fmt/format.h>
 
 #ifdef __TITLE__
 #undef __TITLE__
@@ -202,33 +199,5 @@ bool prepare_list::commit(decree d, commit_type ct)
     return false;
 }
 
-error_s prepare_list::check_if_valid_to_prepare(mutation_ptr &mu)
-{
-    auto decree = mu->get_decree();
-    auto ballot = mu->get_ballot();
-
-    if (decree <= last_committed_decree()) {
-        return FMT_ERR(ERR_VERSION_OUTDATED,
-                       "the mutation decree is outdated [decree({}) <= "
-                       "last_committed_decree({})] ballot = {}, offset = {}",
-                       decree,
-                       last_committed_decree(),
-                       ballot,
-                       mu->data.header.log_offset);
-    }
-
-    auto old = get_mutation_by_decree(decree);
-    if (old != nullptr && old->data.header.ballot >= mu->data.header.ballot) {
-        return FMT_ERR(ERR_VERSION_OUTDATED,
-                       "mutation [decree({}), ballot({})] conflicts with existed mutation "
-                       "with higher ballot(decree({}), ballot({}))",
-                       decree,
-                       ballot,
-                       old->data.header.decree,
-                       old->data.header.ballot);
-    }
-
-    return error_s::ok();
-}
 }
 } // namespace end
