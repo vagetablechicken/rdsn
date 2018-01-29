@@ -39,6 +39,11 @@
 #include "dist/replication/lib/mutation_log_utils.h"
 #include "dist/replication/lib/duplication/fmt_utils.h"
 
+#ifdef __TITLE__
+#undef __TITLE__
+#endif
+#define __TITLE__ "mutation_duplicator"
+
 namespace dsn {
 namespace replication {
 
@@ -171,22 +176,27 @@ public:
         dsn_task_tracker_wait_all(tracker()->tracker());
     }
 
-    void
-    enqueue_start_duplication(std::chrono::milliseconds delay_ms = std::chrono::milliseconds(0))
+    // Thread-safe
+    void start()
     {
-        tasking::enqueue(LPC_DUPLICATE_MUTATIONS,
-                         tracker(),
-                         std::bind(&mutation_duplicator::start_duplication, this),
-                         gpid_to_thread_hash(_replica->get_gpid()),
-                         delay_ms);
+        ddebug_f("starting duplication [dupid: {}, gpid: {}, remote: {}]",
+                 id(),
+                 _replica->get_gpid(),
+                 remote_cluster_address());
+
+        _paused = false;
+        enqueue_start_duplication();
     }
 
     // Thread-safe
     void pause()
     {
-        if (!_paused) {
-            _paused = true;
-        }
+        ddebug_f("pausing duplication [dupid: {}, gpid: {}, remote: {}]",
+                 id(),
+                 _replica->get_gpid(),
+                 remote_cluster_address());
+
+        _paused = true;
     }
 
     dupid_t id() const { return _id; }
@@ -217,10 +227,21 @@ public:
 
     /// ================================= Implementation =================================== ///
 
+    void
+    enqueue_start_duplication(std::chrono::milliseconds delay_ms = std::chrono::milliseconds(0))
+    {
+        tasking::enqueue(LPC_DUPLICATE_MUTATIONS,
+                         tracker(),
+                         std::bind(&mutation_duplicator::start_duplication, this),
+                         gpid_to_thread_hash(_replica->get_gpid()),
+                         delay_ms);
+    }
+
     void start_duplication()
     {
-        dassert(_paused, "start an already started mutation_duplicator");
-        _paused = false;
+        if (_paused) {
+            return;
+        }
 
         std::vector<std::string> log_files = log_utils::list_all_files_or_die(_private_log->dir());
 
@@ -260,9 +281,9 @@ public:
             return;
         }
 
-        ddebug_f("duplicating mutations [gpid: {}, last_decree: {}]",
-                 _replica->get_gpid(),
-                 view().last_decree);
+        ddebug_f("duplicating mutations [last_decree: {}, file: {}]",
+                 view().last_decree,
+                 _current_log_file->path());
 
         if (_mutation_batch->empty()) {
             if (!have_more()) {
@@ -294,11 +315,11 @@ public:
             // retry if the loaded block contains no mutations (typically the header block)
             enqueue_do_duplication(std::chrono::milliseconds(1000));
         } else {
-            ship_loaded_mutation_batch();
+            start_shipping_mutation_batch();
         }
     }
 
-    task_ptr ship_loaded_mutation_batch()
+    task_ptr start_shipping_mutation_batch()
     {
         _last_duplicate_time_ms = dsn_now_ms();
 
@@ -330,8 +351,7 @@ public:
 
     bool have_more() const { return _private_log->max_commit_on_disk() > _view->last_decree; }
 
-    // REQUIRES: `log_file` must have at least one mutation.
-    // RETURNS: false if nothing was loaded.
+    // RETURNS: false if the operation encountered error.
     bool load_mutations_from_log_file(log_file_ptr &log_file)
     {
         error_s err = mutation_log::replay_block(
