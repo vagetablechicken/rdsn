@@ -37,10 +37,11 @@ replica::duplication_impl::get_duplication_confirms_to_update() const
 {
     std::vector<duplication_confirm_entry> updates;
     for (auto &kv : _duplications) {
-        const duplication_view &view = kv.second->view();
+        mutation_duplicator_s_ptr duplicator = kv.second;
+        duplication_view view = duplicator->view();
         if (view.last_decree != view.confirmed_decree) {
             duplication_confirm_entry entry;
-            entry.dupid = view.id;
+            entry.dupid = duplicator->id();
             entry.confirmed_decree = view.last_decree;
             updates.emplace_back(entry);
         }
@@ -92,7 +93,9 @@ void replica::duplication_impl::update_confirmed_points(
         }
 
         mutation_duplicator_s_ptr dup = it->second;
-        dup->mutable_view()->confirmed_decree = ce.confirmed_decree;
+
+        duplication_view new_state = dup->view().set_confirmed_decree(ce.confirmed_decree);
+        dup->update_state(new_state);
     }
 }
 

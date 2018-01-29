@@ -60,8 +60,7 @@ TEST_F(replica_stub_duplication_test, duplication_sync)
         duplication_entry ent;
         ent.dupid = 1;
         auto dup = std::make_shared<mutation_duplicator>(ent, r);
-        dup->mutable_view()->last_decree = 1;
-        dup->mutable_view()->confirmed_decree = 2;
+        dup->update_state(dup->view().set_last_decree(1).set_confirmed_decree(2));
         add_dup(r, std::move(dup));
     }
 
@@ -125,6 +124,7 @@ TEST_F(replica_stub_duplication_test, update_duplication_map)
         duplication_entry ent;
         ent.dupid = 2;
         ent.status = duplication_status::DS_START;
+        ent.confirmed_decree = 0;
 
         dup_map[1].push_back(ent);
         dup_map[3].push_back(ent);
@@ -132,10 +132,15 @@ TEST_F(replica_stub_duplication_test, update_duplication_map)
 
         dup_impl->update_duplication_map(dup_map);
 
-        // update confirm points.
-        find_dup(stub->find_replica(1, 1), 2)->mutable_view()->last_decree = 2;
-        find_dup(stub->find_replica(3, 1), 2)->mutable_view()->last_decree = 2;
-        find_dup(stub->find_replica(5, 1), 2)->mutable_view()->last_decree = 2;
+        // update duplicated decree of 1, 3, 5 to 2
+        auto dup = find_dup(stub->find_replica(1, 1), 2);
+        dup->update_state(dup->view().set_last_decree(2));
+
+        dup = find_dup(stub->find_replica(3, 1), 2);
+        dup->update_state(dup->view().set_last_decree(2));
+
+        dup = find_dup(stub->find_replica(5, 1), 2);
+        dup->update_state(dup->view().set_last_decree(2));
     }
 
     RPC_MOCKING(duplication_sync_rpc)
@@ -155,8 +160,6 @@ TEST_F(replica_stub_duplication_test, update_duplication_map)
     {
         dup_map.erase(3);
         dup_impl->update_duplication_map(dup_map);
-        find_dup(stub->find_replica(1, 1), 2)->mutable_view()->last_decree = 3;
-        find_dup(stub->find_replica(5, 1), 2)->mutable_view()->last_decree = 3;
         ASSERT_EQ(find_dup(stub->find_replica(3, 1), 2), nullptr);
     }
 }
@@ -190,8 +193,7 @@ TEST_F(replica_stub_duplication_test, update_confirmed_points)
         duplication_entry ent;
         ent.dupid = 1;
         auto dup = std::make_shared<mutation_duplicator>(ent, r);
-        dup->mutable_view()->last_decree = 3;
-        dup->mutable_view()->confirmed_decree = 1;
+        dup->update_state(dup->view().set_last_decree(3).set_confirmed_decree(1));
         add_dup(r, std::move(dup));
     }
 

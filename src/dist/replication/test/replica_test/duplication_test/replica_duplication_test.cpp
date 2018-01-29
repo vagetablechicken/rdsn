@@ -46,8 +46,7 @@ TEST_F(replica_duplication_test, get_duplication_confirms)
         ent.dupid = id;
 
         auto dup = dsn::make_unique<mutation_duplicator>(ent, r.get());
-        dup->mutable_view()->last_decree = 2;
-        dup->mutable_view()->confirmed_decree = 1;
+        dup->update_state(dup->view().set_last_decree(2).set_confirmed_decree(1));
         add_dup(r.get(), std::move(dup));
     }
 
@@ -56,7 +55,7 @@ TEST_F(replica_duplication_test, get_duplication_confirms)
         ent.dupid = id;
 
         auto dup = dsn::make_unique<mutation_duplicator>(ent, r.get());
-        dup->mutable_view()->last_decree = dup->mutable_view()->confirmed_decree = 1;
+        dup->update_state(dup->view().set_last_decree(1).set_confirmed_decree(1));
         add_dup(r.get(), std::move(dup));
     }
 

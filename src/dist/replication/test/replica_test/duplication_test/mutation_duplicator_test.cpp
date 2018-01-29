@@ -100,8 +100,7 @@ struct mutation_duplicator_test : public duplication_test_base
             tmp.add(1, mu);
         }
 
-        std::vector<dsn_message_t> vec_message;
-        mutation_duplicator::mutation_batch_to_vec_message(&tmp, &vec_message);
+        std::vector<dsn_message_t> vec_message = tmp.move_to_vec_message();
         for (dsn_message_t msg : vec_message) {
             dest->emplace_back(dsn_message_t_to_string(msg));
         }
@@ -165,9 +164,9 @@ TEST_F(mutation_duplicator_test, new_duplicator)
     dup_ent.confirmed_decree = confirmed_decree;
 
     auto duplicator = make_unique<mutation_duplicator>(dup_ent, r.get());
-    ASSERT_EQ(duplicator->view().id, dupid);
+    ASSERT_EQ(duplicator->id(), dupid);
     ASSERT_EQ(duplicator->view().status, status);
-    ASSERT_EQ(duplicator->view().remote_cluster_address, remote_address);
+    ASSERT_EQ(duplicator->remote_cluster_address(), remote_address);
     ASSERT_EQ(duplicator->view().confirmed_decree, confirmed_decree);
     ASSERT_EQ(duplicator->view().last_decree, confirmed_decree);
 }

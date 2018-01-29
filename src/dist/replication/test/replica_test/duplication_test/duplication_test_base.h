@@ -115,8 +115,7 @@ struct duplication_test_base : public ::testing::Test
 
     static void add_dup(mock_replica *r, mutation_duplicator_s_ptr dup)
     {
-        dupid_t dupid = dup->view().id;
-        r->get_replica_duplication_impl()._duplications[dupid] = std::move(dup);
+        r->get_replica_duplication_impl()._duplications[dup->id()] = std::move(dup);
     }
 
     static mutation_duplicator *find_dup(mock_replica *r, dupid_t dupid)

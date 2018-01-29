@@ -30,25 +30,54 @@
 #include <dsn/dist/replication/fmt_logging.h>
 #include <dsn/dist/replication/replication_types.h>
 #include <dsn/dist/replication/replication_app_base.h>
+#include <dsn/dist/replication/duplication_common.h>
 
 #include "dist/replication/lib/replica.h"
 #include "dist/replication/lib/prepare_list.h"
 #include "dist/replication/lib/replica.h"
 #include "dist/replication/lib/mutation_log.h"
 #include "dist/replication/lib/mutation_log_utils.h"
-#include "dist/replication/lib/duplication/duplication_view.h"
 #include "dist/replication/lib/duplication/fmt_utils.h"
 
 namespace dsn {
 namespace replication {
 
+class duplication_view
+{
+public:
+    // the maximum decree that's been persisted in meta server
+    decree confirmed_decree;
+
+    // the maximum decree that's been duplicated to remote.
+    decree last_decree;
+
+    duplication_status::type status;
+
+    duplication_view() : confirmed_decree(0), last_decree(0), status(duplication_status::DS_INIT) {}
+
+    duplication_view &set_last_decree(decree d)
+    {
+        last_decree = d;
+        return *this;
+    }
+
+    duplication_view &set_confirmed_decree(decree d)
+    {
+        confirmed_decree = d;
+        return *this;
+    }
+};
+
+typedef std::unique_ptr<duplication_view> duplication_view_u_ptr;
+
 // Each mutation_duplicator is responsible for one duplication.
 class mutation_duplicator
 {
+    // The mutations loaded from private log are stored temporarily in mutation_batch,
+    // internally a prepare_list. Since rdsn guarantees that everything in private log
+    // is committed, the mutations duplicated to remote are always safe to apply.
     struct mutation_batch
     {
-        // TODO(wutao1): loads configuration log_private_batch_buffer_count to
-        // initialize this value.
         static const int64_t per_batch_num_entries = 1024;
 
         explicit mutation_batch(int64_t init_decree)
@@ -60,12 +89,43 @@ class mutation_duplicator
 
         error_s add(int log_length, mutation_ptr mu)
         {
-            RETURN_NOT_OK(_mutations.check_if_valid_to_prepare(mu));
-
-            _mutations.prepare(mu, partition_status::PS_INACTIVE);
-
+            error_code ec = _mutations.prepare(mu, partition_status::PS_INACTIVE);
+            if (ec != ERR_OK) {
+                return FMT_ERR(
+                    ERR_INVALID_DATA,
+                    "failed to add mutation into prepare list [err: {}, mutation decree: {}, "
+                    "ballot: {}]",
+                    ec,
+                    mu->get_decree(),
+                    mu->get_ballot());
+            }
             return error_s::ok();
         }
+
+        // After calling this function the `batch` is guaranteed to be empty.
+        std::vector<dsn_message_t> move_to_vec_message()
+        {
+            std::vector<dsn_message_t> dest;
+            while (true) {
+                auto mu = _mutations.pop_min();
+                if (mu == nullptr) {
+                    break;
+                }
+
+                for (const mutation_update &update : mu->data.updates) {
+                    dsn_message_t req = dsn_msg_create_received_request(
+                        update.code,
+                        (dsn_msg_serialize_format)update.serialization_type,
+                        (void *)update.data.data(),
+                        update.data.length());
+
+                    dest.push_back(req);
+                }
+            }
+            return dest;
+        }
+
+        decree max_decree() const { return _mutations.max_decree(); }
 
         bool empty() const { return _mutations.count() == 0; }
 
@@ -78,7 +138,9 @@ class mutation_duplicator
 
 public:
     mutation_duplicator(const duplication_entry &ent, replica *r)
-        : _replica(r),
+        : _id(ent.dupid),
+          _remote_cluster_address(ent.remote_address),
+          _replica(r),
           _private_log(r->private_log()),
           _paused(true),
           _mutation_batch(make_unique<mutation_batch>(0)),
@@ -95,7 +157,7 @@ public:
                      ent.confirmed_decree);
         }
 
-        _view = make_unique<duplication_view>(ent.dupid, ent.remote_address);
+        _view = make_unique<duplication_view>();
         _view->confirmed_decree = ent.confirmed_decree;
         _view->status = ent.status;
 
@@ -119,6 +181,42 @@ public:
                          delay_ms);
     }
 
+    // Thread-safe
+    void pause()
+    {
+        if (!_paused) {
+            _paused = true;
+        }
+    }
+
+    dupid_t id() const { return _id; }
+
+    const std::string &remote_cluster_address() const { return _remote_cluster_address; }
+
+    // Thread-safe
+    duplication_view view() const
+    {
+        ::dsn::service::zauto_read_lock l(_lock);
+        return *_view;
+    }
+
+    // Thread-safe
+    void update_state(const duplication_view &new_state)
+    {
+        ::dsn::service::zauto_write_lock l(_lock);
+        _view->confirmed_decree = std::max(_view->confirmed_decree, new_state.confirmed_decree);
+        _view->last_decree = std::max(_view->last_decree, new_state.last_decree);
+        _view->status = new_state.status;
+    }
+
+    // Returns: the task tracker.
+    clientlet *tracker() { return &_tracker; }
+
+    // Await for all running tasks to complete.
+    void wait_all() { dsn_task_tracker_wait_all(tracker()->tracker()); }
+
+    /// ================================= Implementation =================================== ///
+
     void start_duplication()
     {
         dassert(_paused, "start an already started mutation_duplicator");
@@ -136,25 +234,6 @@ public:
 
         enqueue_do_duplication();
     }
-
-    void pause()
-    {
-        if (!_paused) {
-            _paused = true;
-        }
-    }
-
-    const duplication_view &view() const { return *_view; }
-
-    duplication_view *mutable_view() { return _view.get(); }
-
-    // Returns: the task tracker.
-    clientlet *tracker() { return &_tracker; }
-
-    // Await for all running tasks to complete.
-    void wait_all() { dsn_task_tracker_wait_all(tracker()->tracker()); }
-
-    /// ================================= Implementation =================================== ///
 
     // RETURNS: null if there's no valid log file.
     static log_file_ptr find_log_file_with_min_index(const std::vector<std::string> &log_files)
@@ -180,6 +259,10 @@ public:
         if (_paused) {
             return;
         }
+
+        ddebug_f("duplicating mutations [gpid: {}, last_decree: {}]",
+                 _replica->get_gpid(),
+                 view().last_decree);
 
         if (_mutation_batch->empty()) {
             if (!have_more()) {
@@ -218,8 +301,8 @@ public:
     task_ptr ship_loaded_mutation_batch()
     {
         _last_duplicate_time_ms = dsn_now_ms();
-        std::vector<dsn_message_t> mutations;
-        mutation_batch_to_vec_message(_mutation_batch.get(), &mutations);
+
+        std::vector<dsn_message_t> mutations = _mutation_batch->move_to_vec_message();
         return enqueue_ship_mutations(mutations);
     }
 
@@ -256,8 +339,9 @@ public:
             [this](int log_length, mutation_ptr &mu) -> bool {
                 auto es = _mutation_batch->add(log_length, std::move(mu));
                 if (!es.is_ok()) {
-                    ddebug_f("ignore this invalid mutation: {}", es.description());
-                    return true;
+                    dfatal_f("invalid mutation was found. err: {}, gpid: {}",
+                             es.description(),
+                             _replica->get_gpid());
                 }
                 return true;
             },
@@ -299,36 +383,19 @@ public:
             // retries forever until all mutations are duplicated.
             enqueue_ship_mutations(mutations);
         } else {
+            duplication_view new_state = view().set_last_decree(_mutation_batch->max_decree());
+            update_state(new_state);
+
             // delay 1 second to start next duplication job
             enqueue_do_duplication(std::chrono::milliseconds(1000));
         }
     }
 
-    // After calling this function the `batch` is guaranteed to be empty.
-    static void mutation_batch_to_vec_message(mutation_batch *batch,
-                                              std::vector<dsn_message_t> *dest)
-    {
-        prepare_list &mutations = batch->_mutations;
-        while (true) {
-            auto mu = mutations.pop_min();
-            if (mu == nullptr) {
-                break;
-            }
-
-            for (const mutation_update &update : mu->data.updates) {
-                dsn_message_t req = dsn_msg_create_received_request(
-                    update.code,
-                    (dsn_msg_serialize_format)update.serialization_type,
-                    (void *)update.data.data(),
-                    update.data.length());
-
-                dest->push_back(req);
-            }
-        }
-    }
-
 private:
     friend class mutation_duplicator_test;
+
+    const dupid_t _id;
+    const std::string _remote_cluster_address;
 
     replica *_replica;
     mutation_log_ptr _private_log;
@@ -343,6 +410,8 @@ private:
 
     int64_t _last_duplicate_time_ms;
 
+    // protect the access of _view.
+    mutable ::dsn::service::zrwlock_nr _lock;
     duplication_view_u_ptr _view;
 
     clientlet _tracker;

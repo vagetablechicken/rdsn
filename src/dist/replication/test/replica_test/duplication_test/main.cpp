@@ -32,14 +32,13 @@
 int g_test_count = 0;
 int g_test_ret = 0;
 
-class replication_service_test_app : public dsn::replication::replication_service_app
+class replication_service_test_app : public dsn::service_app
 {
 public:
-    explicit replication_service_test_app(dsn_gpid pid) : replication_service_app(pid) {}
+    replication_service_test_app(const dsn::service_app_info *info) : ::dsn::service_app(info) {}
 
-    dsn::error_code start(int argc, char **argv) override
+    dsn::error_code start(const std::vector<std::string> &args) override
     {
-        testing::InitGoogleTest(&argc, argv);
         g_test_ret = RUN_ALL_TESTS();
         g_test_count = 1;
         return dsn::ERR_OK;
@@ -53,7 +52,7 @@ GTEST_API_ int main(int argc, char **argv)
     testing::InitGoogleTest(&argc, argv);
 
     // register all possible services
-    dsn::register_app<replication_service_test_app>("replica");
+    dsn::service_app::register_factory<replication_service_test_app>("replica");
 
     // specify what services and tools will run in config file, then run
     dsn_run_config("config-test.ini", false);
