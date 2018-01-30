@@ -151,8 +151,7 @@ public:
           _mutation_batch(make_unique<mutation_batch>(0)),
           _current_end_offset(0),
           _read_from_start(true),
-          _last_duplicate_time_ms(0),
-          _tracker(1)
+          _view(make_unique<duplication_view>())
     {
         if (_replica->last_durable_decree() > ent.confirmed_decree) {
             dfatal_f("the logs haven't yet duplicated were accidentally truncated [replica: "
@@ -162,7 +161,6 @@ public:
                      ent.confirmed_decree);
         }
 
-        _view = make_unique<duplication_view>();
         _view->confirmed_decree = ent.confirmed_decree;
         _view->status = ent.status;
 
@@ -292,8 +290,8 @@ public:
                 return;
             }
 
-            _mutation_batch = make_unique<mutation_batch>(
-                _mutation_batch->_mutations.last_committed_decree() + 1);
+            _mutation_batch =
+                make_unique<mutation_batch>(_mutation_batch->_mutations.last_committed_decree());
 
             if (!load_mutations_from_log_file(_current_log_file)) {
                 if (try_switch_to_next_log_file()) {
@@ -312,19 +310,17 @@ public:
         }
 
         if (_mutation_batch->empty()) {
-            // retry if the loaded block contains no mutations (typically the header block)
+            // retry if the loaded block contains no mutation (typically the header block)
             enqueue_do_duplication(std::chrono::milliseconds(1000));
         } else {
             start_shipping_mutation_batch();
         }
     }
 
-    task_ptr start_shipping_mutation_batch()
+    void start_shipping_mutation_batch()
     {
-        _last_duplicate_time_ms = dsn_now_ms();
-
         std::vector<dsn_message_t> mutations = _mutation_batch->move_to_vec_message();
-        return enqueue_ship_mutations(mutations);
+        enqueue_ship_mutations(mutations);
     }
 
     // Switches to the log file with index = current_log_index + 1.
@@ -395,13 +391,19 @@ public:
 
     void ship_mutations(std::vector<dsn_message_t> &mutations)
     {
+        if (_paused) {
+            return;
+        }
+
+        ddebug_f("start shipping mutations [size: {}]", mutations.size());
+
         auto backlog_handler = _replica->get_app()->get_duplication_backlog_handler();
         error_s err = backlog_handler->duplicate(&mutations);
         if (!err.is_ok()) {
             derror_f("failed to ship mutations [gpid: {}]: {}", _replica->get_gpid(), err);
 
             // retries forever until all mutations are duplicated.
-            enqueue_ship_mutations(mutations);
+            enqueue_ship_mutations(mutations, std::chrono::milliseconds(1000));
         } else {
             duplication_view new_state = view().set_last_decree(_mutation_batch->max_decree());
             update_state(new_state);
@@ -427,8 +429,6 @@ private:
     int64_t _current_end_offset;
     log_file_ptr _current_log_file;
     bool _read_from_start;
-
-    int64_t _last_duplicate_time_ms;
 
     // protect the access of _view.
     mutable ::dsn::service::zrwlock_nr _lock;

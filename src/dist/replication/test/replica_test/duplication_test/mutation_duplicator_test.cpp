@@ -45,15 +45,25 @@ inline std::string dsn_message_t_to_string(dsn_message_t req)
 
 struct mock_duplication_backlog_handler : public duplication_backlog_handler
 {
+    // thread-safe
     error_s duplicate(std::vector<dsn_message_t> *mutations) override
     {
+        zauto_lock _(lock);
         for (dsn_message_t req : *mutations) {
             mutation_list.emplace_back(dsn_message_t_to_string(req));
         }
         return error_s::ok();
     }
 
+    // thread-safe
+    std::vector<std::string> get_mutation_list_safe()
+    {
+        zauto_lock _(lock);
+        return mutation_list;
+    }
+
     std::vector<std::string> mutation_list;
+    mutable zlock lock;
 };
 
 struct mutation_duplicator_test : public duplication_test_base
@@ -140,6 +150,13 @@ struct mutation_duplicator_test : public duplication_test_base
         return make_unique<mutation_duplicator>(dup_ent, r);
     }
 
+    // getters
+    std::atomic<bool> &get_paused(mutation_duplicator &duplicator) { return duplicator._paused; }
+    std::unique_ptr<mutation_batch> &get_mutation_batch(mutation_duplicator &duplicator)
+    {
+        return duplicator._mutation_batch;
+    }
+
     const std::string log_dir;
 
     std::unique_ptr<mock_replica> replica;
@@ -165,8 +182,8 @@ TEST_F(mutation_duplicator_test, new_duplicator)
 
     auto duplicator = make_unique<mutation_duplicator>(dup_ent, r.get());
     ASSERT_EQ(duplicator->id(), dupid);
-    ASSERT_EQ(duplicator->view().status, status);
     ASSERT_EQ(duplicator->remote_cluster_address(), remote_address);
+    ASSERT_EQ(duplicator->view().status, status);
     ASSERT_EQ(duplicator->view().confirmed_decree, confirmed_decree);
     ASSERT_EQ(duplicator->view().last_decree, confirmed_decree);
 }
@@ -186,6 +203,8 @@ TEST_F(mutation_duplicator_test, load_and_ship_mutations)
             mutation_ptr mu = create_test_mutation(2 + i, msg);
             mlog->append(mu, LPC_AIO_IMMEDIATE_CALLBACK, nullptr, nullptr, 0);
         }
+
+        dsn_task_tracker_wait_all(mlog->tracker());
     }
 
     { // read from log file
@@ -198,7 +217,20 @@ TEST_F(mutation_duplicator_test, load_and_ship_mutations)
         // load_mutations_from_log_file must read all mutations written before
         ASSERT_MUTATIONS_EQ(*duplicator, mutations);
 
-        duplicator->start_shipping_mutation_batch()->wait();
+        {
+            get_paused(*duplicator) = false; // set _paused to false to be able to start shipping.
+            auto messages = get_mutation_batch(*duplicator)->move_to_vec_message();
+
+            // pause immediately after shipping finishes.
+            tasking::enqueue(LPC_DUPLICATE_MUTATIONS,
+                             duplicator->tracker(),
+                             [&duplicator, &messages]() {
+                                 duplicator->ship_mutations(messages);
+                                 duplicator->pause();
+                             },
+                             gpid_to_thread_hash(replica->get_gpid()));
+            duplicator->wait_all();
+        }
 
         // all mutations must have been shipped now.
         ASSERT_MUTATIONS_EQ(*duplicator, std::vector<std::string>());
@@ -232,17 +264,16 @@ TEST_F(mutation_duplicator_test, find_log_file_with_min_index)
     ASSERT_EQ(lf->index(), 1);
 }
 
-TEST_F(mutation_duplicator_test, start_duplication)
+TEST_F(mutation_duplicator_test, start_duplication_one_log_file)
 {
     std::vector<std::string> mutations;
-    int max_log_file_mb = 1;
 
-    mutation_log_ptr mlog = new mutation_log_private(
-        replica->dir(), max_log_file_mb, replica->get_gpid(), nullptr, 1024, 512, 10000);
+    mutation_log_ptr mlog =
+        new mutation_log_private(replica->dir(), 4, replica->get_gpid(), nullptr, 1024, 512, 10000);
     EXPECT_EQ(mlog->open(nullptr, nullptr), ERR_OK);
 
-    { // writing mutations to log which will generate multiple files
-        for (int i = 0; i < 1000 * 20; i++) {
+    { // writing mutations that only generate 1 log file.
+        for (int i = 0; i < 1000; i++) {
             std::string msg = "hello!";
             mutations.push_back(msg);
             mutation_ptr mu = create_test_mutation(2 + i, msg);
@@ -256,6 +287,12 @@ TEST_F(mutation_duplicator_test, start_duplication)
         replica->init_private_log(mlog);
         auto duplicator = create_duplicator(replica.get());
         duplicator->start();
+
+        while (backlog_handler->get_mutation_list_safe().size() < mutations.size()) {
+            sleep(1);
+        }
+
+        duplicator->pause();
         duplicator->wait_all();
 
         ASSERT_EQ(backlog_handler->mutation_list, mutations)
@@ -264,7 +301,7 @@ TEST_F(mutation_duplicator_test, start_duplication)
 }
 
 // Ensures no tasks will be running after duplicator was paused.
-TEST_F(mutation_duplicator_test, pause)
+TEST_F(mutation_duplicator_test, pause_start_duplication)
 {
     mutation_log_ptr mlog =
         new mutation_log_private(replica->dir(), 4, replica->get_gpid(), nullptr, 1024, 512, 10000);
