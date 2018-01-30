@@ -450,6 +450,11 @@ private:
 class mutation_log_private : public mutation_log
 {
 public:
+    // Parameters:
+    //  - batch_buffer_max_count, batch_buffer_bytes
+    //    The hint of limited size for the write buffer storing the pending mutations.
+    //    Note that the actual log block is still possible to be larger than the
+    //    hinted size.
     mutation_log_private(const std::string &dir,
                          int32_t max_log_file_mb,
                          gpid gpid,

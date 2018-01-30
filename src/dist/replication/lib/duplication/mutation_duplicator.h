@@ -78,23 +78,23 @@ typedef std::unique_ptr<duplication_view> duplication_view_u_ptr;
 // Each mutation_duplicator is responsible for one duplication.
 class mutation_duplicator
 {
-    // The mutations loaded from private log are stored temporarily in mutation_batch,
-    // internally a prepare_list. Since rdsn guarantees that everything in private log
-    // is committed, the mutations duplicated to remote are always safe to apply.
     struct mutation_batch
     {
-        static const int64_t per_batch_num_entries = 1024;
+        static const int64_t prepare_list_num_entries = 200;
 
-        explicit mutation_batch(int64_t init_decree)
-            : _mutations(init_decree, per_batch_num_entries, [](mutation_ptr &) {
-                  // do nothing when log commit
-              })
+        explicit mutation_batch(int64_t init_decree, mutation_duplicator *duplicator)
+            : _mutation_buffer(init_decree,
+                               prepare_list_num_entries,
+                               [](mutation_ptr &) {
+                                   // do nothing when log commit
+                               }),
+              _duplicator(duplicator)
         {
         }
 
         error_s add(int log_length, mutation_ptr mu)
         {
-            error_code ec = _mutations.prepare(mu, partition_status::PS_INACTIVE);
+            error_code ec = _mutation_buffer.prepare(mu, partition_status::PS_INACTIVE);
             if (ec != ERR_OK) {
                 return FMT_ERR(
                     ERR_INVALID_DATA,
@@ -104,39 +104,47 @@ class mutation_duplicator
                     mu->get_decree(),
                     mu->get_ballot());
             }
+
+            while (true) {
+                mutation_ptr popped = _mutation_buffer.pop_min();
+                if (popped == nullptr) {
+                    break;
+                }
+                if (popped->get_decree() <= _mutation_buffer.last_committed_decree()) {
+                    for (const mutation_update &update : mu->data.updates) {
+                        dsn_message_t req = dsn_msg_create_received_request(
+                            update.code,
+                            (dsn_msg_serialize_format)update.serialization_type,
+                            (void *)update.data.data(),
+                            update.data.length());
+
+                        _mutations.push_back(req);
+                    }
+                } else {
+                    _mutation_buffer.prepare(popped, partition_status::PS_INACTIVE);
+                    break;
+                }
+            }
+
+            dassert_f(_mutation_buffer.count() < prepare_list_num_entries,
+                      "dangerous! prepare_list has reached the capacity [gpid: {}]",
+                      _duplicator->_replica->get_gpid());
             return error_s::ok();
         }
 
-        // After calling this function the `batch` is guaranteed to be empty.
-        std::vector<dsn_message_t> move_to_vec_message()
-        {
-            std::vector<dsn_message_t> dest;
-            while (true) {
-                auto mu = _mutations.pop_min();
-                if (mu == nullptr) {
-                    break;
-                }
+        // After calling this function this `batch` is guaranteed to be empty.
+        std::vector<dsn_message_t> move_to_vec_message() { return std::move(_mutations); }
 
-                for (const mutation_update &update : mu->data.updates) {
-                    dsn_message_t req = dsn_msg_create_received_request(
-                        update.code,
-                        (dsn_msg_serialize_format)update.serialization_type,
-                        (void *)update.data.data(),
-                        update.data.length());
+        decree last_decree() const { return _last_decree; }
 
-                    dest.push_back(req);
-                }
-            }
-            return dest;
-        }
-
-        decree max_decree() const { return _mutations.max_decree(); }
-
-        bool empty() const { return _mutations.count() == 0; }
+        bool empty() const { return _mutations.empty(); }
 
         friend class mutation_duplicator_test;
 
-        prepare_list _mutations;
+        prepare_list _mutation_buffer;
+        std::vector<dsn_message_t> _mutations;
+        decree _last_decree;
+        mutation_duplicator *_duplicator;
     };
 
     using mutation_batch_u_ptr = std::unique_ptr<mutation_batch>;
@@ -148,7 +156,7 @@ public:
           _replica(r),
           _private_log(r->private_log()),
           _paused(true),
-          _mutation_batch(make_unique<mutation_batch>(0)),
+          _mutation_batch(make_unique<mutation_batch>(0, this)),
           _current_end_offset(0),
           _read_from_start(true),
           _view(make_unique<duplication_view>())
@@ -290,9 +298,6 @@ public:
                 return;
             }
 
-            _mutation_batch =
-                make_unique<mutation_batch>(_mutation_batch->_mutations.last_committed_decree());
-
             if (!load_mutations_from_log_file(_current_log_file)) {
                 if (try_switch_to_next_log_file()) {
                     // read another log file.
@@ -310,7 +315,7 @@ public:
         }
 
         if (_mutation_batch->empty()) {
-            // retry if the loaded block contains no mutation (typically the header block)
+            // retry if the loaded block contains no mutation
             enqueue_do_duplication(std::chrono::milliseconds(1000));
         } else {
             start_shipping_mutation_batch();
@@ -326,10 +331,11 @@ public:
     // Switches to the log file with index = current_log_index + 1.
     bool try_switch_to_next_log_file()
     {
-        std::string new_path = fmt::format("{}/log-{}-{}",
+        std::string new_path = fmt::format("{}/log.{}.{}",
                                            _private_log->dir(),
                                            _current_log_file->index() + 1,
                                            _current_end_offset);
+        ddebug_f("try switching log file to: {}", new_path);
 
         bool result = false;
         if (utils::filesystem::file_exists(new_path)) {
@@ -341,6 +347,8 @@ public:
         if (result) {
             _current_log_file = log_utils::open_read_or_die(new_path);
             _read_from_start = true;
+
+            ddebug_f("switched log file to: {}", new_path);
         }
         return result;
     }
@@ -405,7 +413,7 @@ public:
             // retries forever until all mutations are duplicated.
             enqueue_ship_mutations(mutations, std::chrono::milliseconds(1000));
         } else {
-            duplication_view new_state = view().set_last_decree(_mutation_batch->max_decree());
+            duplication_view new_state = view().set_last_decree(_mutation_batch->last_decree());
             update_state(new_state);
 
             // delay 1 second to start next duplication job
