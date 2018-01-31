@@ -127,7 +127,7 @@ class mutation_duplicator
             }
 
             dassert_f(_mutation_buffer.count() < prepare_list_num_entries,
-                      "dangerous! prepare_list has reached the capacity [gpid: {}]",
+                      "impossible! prepare_list has reached the capacity [gpid: {}]",
                       _duplicator->_replica->get_gpid());
             return error_s::ok();
         }

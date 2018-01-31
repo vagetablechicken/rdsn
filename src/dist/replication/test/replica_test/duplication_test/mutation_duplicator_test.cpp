@@ -214,6 +214,10 @@ struct mutation_duplicator_test : public duplication_test_base
                 mlog->append(mu, LPC_AIO_IMMEDIATE_CALLBACK, nullptr, nullptr, 0);
             }
 
+            // commit the last entry
+            mutation_ptr mu = create_test_mutation(2 + num_entries, "hello!");
+            mlog->append(mu, LPC_AIO_IMMEDIATE_CALLBACK, nullptr, nullptr, 0);
+
             dsn_task_tracker_wait_all(mlog->tracker());
         }
 
@@ -309,11 +313,13 @@ TEST_F(mutation_duplicator_test, find_log_file_with_min_index)
     ASSERT_EQ(lf->index(), 1);
 }
 
-TEST_F(mutation_duplicator_test, start_duplication_1000_4MB) { test_start_duplication(1000, 4); }
+TEST_F(mutation_duplicator_test, start_duplication_10000_4MB) { test_start_duplication(10000, 4); }
 
-TEST_F(mutation_duplicator_test, start_duplication_2000_4MB) { test_start_duplication(2000, 4); }
+TEST_F(mutation_duplicator_test, start_duplication_50000_4MB) { test_start_duplication(50000, 4); }
 
-TEST_F(mutation_duplicator_test, start_duplication_5000_4MB) { test_start_duplication(5000, 4); }
+TEST_F(mutation_duplicator_test, start_duplication_10000_1MB) { test_start_duplication(10000, 1); }
+
+TEST_F(mutation_duplicator_test, start_duplication_50000_1MB) { test_start_duplication(50000, 1); }
 
 // Ensures no tasks will be running after duplicator was paused.
 TEST_F(mutation_duplicator_test, pause_start_duplication)
