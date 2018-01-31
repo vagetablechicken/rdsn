@@ -60,6 +60,11 @@ public:
 
     duplication_view() : confirmed_decree(0), last_decree(0), status(duplication_status::DS_INIT) {}
 
+    duplication_view(const duplication_view &rhs)
+        : confirmed_decree(rhs.confirmed_decree), last_decree(rhs.last_decree), status(rhs.status)
+    {
+    }
+
     duplication_view &set_last_decree(decree d)
     {
         last_decree = d;
@@ -88,6 +93,7 @@ class mutation_duplicator
                                [](mutation_ptr &) {
                                    // do nothing when log commit
                                }),
+              _last_decree(0),
               _duplicator(duplicator)
         {
         }
@@ -120,6 +126,9 @@ class mutation_duplicator
 
                         _mutations.push_back(req);
                     }
+
+                    // update last_decree
+                    _last_decree = std::max(_last_decree, popped->get_decree());
                 } else {
                     _mutation_buffer.prepare(popped, partition_status::PS_INACTIVE);
                     break;

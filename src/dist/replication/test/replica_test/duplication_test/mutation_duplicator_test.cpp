@@ -132,14 +132,14 @@ struct mutation_duplicator_test : public duplication_test_base
         return mu;
     }
 
-    std::unique_ptr<mutation_duplicator> create_duplicator(replica *r)
+    std::unique_ptr<mutation_duplicator> create_test_duplicator()
     {
         duplication_entry dup_ent;
         dup_ent.dupid = 1;
         dup_ent.remote_address = "remote_address";
         dup_ent.status = duplication_status::DS_START;
         dup_ent.confirmed_decree = 0;
-        return make_unique<mutation_duplicator>(dup_ent, r);
+        return make_unique<mutation_duplicator>(dup_ent, replica.get());
     }
 
     void test_load_and_ship_mutations(int num_entries)
@@ -168,7 +168,7 @@ struct mutation_duplicator_test : public duplication_test_base
         { // read from log file
             auto logf = log_utils::open_read_or_die(log_dir + "/log.1.0");
 
-            auto duplicator = create_duplicator(replica.get());
+            auto duplicator = create_test_duplicator();
             while (duplicator->load_mutations_from_log_file(logf)) {
             }
 
@@ -223,7 +223,7 @@ struct mutation_duplicator_test : public duplication_test_base
 
         {
             replica->init_private_log(mlog);
-            auto duplicator = create_duplicator(replica.get());
+            auto duplicator = create_test_duplicator();
             duplicator->start();
 
             while (backlog_handler->get_mutation_list_safe().size() < mutations.size()) {
@@ -247,9 +247,6 @@ struct mutation_duplicator_test : public duplication_test_base
 
 TEST_F(mutation_duplicator_test, new_duplicator)
 {
-    auto stub = make_unique<replica_stub>();
-    auto r = create_replica(stub.get());
-
     dupid_t dupid = 1;
     std::string remote_address = "remote_address";
     duplication_status::type status = duplication_status::DS_START;
@@ -261,7 +258,7 @@ TEST_F(mutation_duplicator_test, new_duplicator)
     dup_ent.status = status;
     dup_ent.confirmed_decree = confirmed_decree;
 
-    auto duplicator = make_unique<mutation_duplicator>(dup_ent, r.get());
+    auto duplicator = make_unique<mutation_duplicator>(dup_ent, replica.get());
     ASSERT_EQ(duplicator->id(), dupid);
     ASSERT_EQ(duplicator->remote_cluster_address(), remote_address);
     ASSERT_EQ(duplicator->view().status, status);
@@ -330,12 +327,27 @@ TEST_F(mutation_duplicator_test, pause_start_duplication)
 
     {
         replica->init_private_log(mlog);
-        auto duplicator = create_duplicator(replica.get());
+        auto duplicator = create_test_duplicator();
         duplicator->start();
         duplicator->pause();
 
         duplicator->wait_all();
     }
+}
+
+TEST_F(mutation_duplicator_test, duplication_view)
+{
+    auto duplicator = create_test_duplicator();
+    ASSERT_EQ(duplicator->view().last_decree, 0);
+    ASSERT_EQ(duplicator->view().confirmed_decree, 0);
+
+    duplicator->update_state(duplicator->view().set_last_decree(10));
+    ASSERT_EQ(duplicator->view().last_decree, 10);
+    ASSERT_EQ(duplicator->view().confirmed_decree, 0);
+
+    duplicator->update_state(duplicator->view().set_confirmed_decree(10));
+    ASSERT_EQ(duplicator->view().confirmed_decree, 10);
+    ASSERT_EQ(duplicator->view().last_decree, 10);
 }
 
 } // namespace replication
