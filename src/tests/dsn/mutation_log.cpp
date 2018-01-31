@@ -313,16 +313,113 @@ struct mutation_log_test : public ::testing::Test
         ASSERT_EQ(std::string(lhs.data(), lhs.length()), std::string(rhs.data(), rhs.length()));
     }
 
-    static error_code mutation_log_replay(log_file_ptr &log,
-                                          mutation_log::replay_callback callback,
-                                          /*out*/ int64_t &end_offset)
+    void test_replay_single_file(int num_entries)
     {
-        return mutation_log::replay(log, callback, end_offset);
+        std::vector<mutation_ptr> mutations;
+
+        { // writing logs
+            mutation_log_ptr mlog =
+                new mutation_log_private(log_dir, 1024, gpid, nullptr, 1024, 512, 10000);
+
+            EXPECT_EQ(mlog->open(nullptr, nullptr), ERR_OK);
+
+            for (int i = 0; i < num_entries; i++) {
+                mutation_ptr mu = create_test_mutation("hello!", 2 + i);
+                mutations.push_back(mu);
+                mlog->append(mu, LPC_AIO_IMMEDIATE_CALLBACK, nullptr, nullptr, 0);
+            }
+        }
+
+        { // replaying logs
+            std::string log_file_path = log_dir + "/log.1.0";
+
+            error_code ec;
+            log_file_ptr file = log_file::open_read(log_file_path.c_str(), ec);
+            ASSERT_EQ(ec, ERR_OK);
+
+            int64_t end_offset;
+            int mutation_index = -1;
+            ec = mutation_log::replay(
+                file,
+                [&mutations, &mutation_index](int log_length, mutation_ptr &mu) -> bool {
+                    mutation_ptr wmu = mutations[++mutation_index];
+                    EXPECT_EQ(wmu->data.header, mu->data.header);
+                    EXPECT_EQ(wmu->data.updates.size(), mu->data.updates.size());
+                    ASSERT_BLOB_EQ(wmu->data.updates[0].data, mu->data.updates[0].data);
+                    EXPECT_EQ(wmu->data.updates[0].code, mu->data.updates[0].code);
+                    EXPECT_EQ(wmu->client_requests.size(), mu->client_requests.size());
+                    return true;
+                },
+                end_offset);
+            ASSERT_EQ(ec, ERR_HANDLE_EOF) << ec.to_string();
+        }
     }
 
-    static error_code mutation_log_create_new_log_file(mutation_log_ptr log)
+    void test_replay_multiple_files(int num_entries, int private_log_file_size_mb)
     {
-        return log->create_new_log_file();
+        std::vector<mutation_ptr> mutations;
+
+        { // writing logs
+            mutation_log_ptr mlog = new mutation_log_private(
+                log_dir, private_log_file_size_mb, gpid, nullptr, 1024, 512, 10000);
+            EXPECT_EQ(mlog->open(nullptr, nullptr), ERR_OK);
+
+            for (int i = 0; i < num_entries; i++) {
+                mutation_ptr mu = create_test_mutation("hello!", 2 + i);
+                mutations.push_back(mu);
+                mlog->append(mu, LPC_AIO_IMMEDIATE_CALLBACK, nullptr, nullptr, 0);
+            }
+        }
+
+        { // reading logs
+            mutation_log_ptr mlog =
+                new mutation_log_private(log_dir, 4, gpid, nullptr, 1024, 512, 10000);
+
+            std::vector<std::string> log_files;
+            ASSERT_TRUE(utils::filesystem::get_subfiles(mlog->dir(), log_files, false));
+
+            int64_t end_offset;
+            int mutation_index = -1;
+            mutation_log::replay(
+                log_files,
+                [&mutations, &mutation_index](int log_length, mutation_ptr &mu) -> bool {
+                    mutation_ptr wmu = mutations[++mutation_index];
+                    EXPECT_EQ(wmu->data.header, mu->data.header);
+                    EXPECT_EQ(wmu->data.updates.size(), mu->data.updates.size());
+                    ASSERT_BLOB_EQ(wmu->data.updates[0].data, mu->data.updates[0].data);
+                    EXPECT_EQ(wmu->data.updates[0].code, mu->data.updates[0].code);
+                    EXPECT_EQ(wmu->client_requests.size(), mu->client_requests.size());
+                    return true;
+                },
+                end_offset);
+            ASSERT_EQ(mutation_index + 1, (int)mutations.size());
+
+            // Ensure to have more than 1 files.
+            ASSERT_TRUE(log_files.size() > 1);
+        }
+    }
+
+    void test_open_log_file_map(int num_files)
+    {
+        { // generate multiple log files
+            mutation_log_ptr mlog =
+                new mutation_log_private(log_dir, 1, gpid, nullptr, 1024, 512, 10000);
+            ASSERT_EQ(mlog->open(nullptr, nullptr), ERR_OK);
+
+            for (int f = 0; f < num_files; f++) {
+                mlog->create_new_log_file();
+            }
+
+            dsn_task_tracker_wait_all(mlog->tracker());
+        }
+
+        {
+            auto log_files = log_utils::list_all_files_or_die(log_dir);
+            ASSERT_EQ(log_files.size(), num_files);
+
+            auto log_file_map = log_utils::open_log_file_map(log_files);
+            ASSERT_EQ(log_file_map.size(), num_files);
+        }
     }
 
     const std::string log_dir;
@@ -377,52 +474,16 @@ TEST_F(mutation_log_test, replay_block)
     }
 }
 
-TEST_F(mutation_log_test, replay_single_file)
-{
-    std::vector<mutation_ptr> mutations;
-    uint32_t batch_buffer_bytes = 1 * 1024 * 1024;
-    uint32_t batch_buffer_count = 100;
+TEST_F(mutation_log_test, replay_single_file_1000) { test_replay_single_file(1000); }
 
-    { // writing logs
-        mutation_log_ptr mlog = new mutation_log_private(
-            log_dir, 4, gpid, nullptr, batch_buffer_bytes, batch_buffer_count, 10000);
+TEST_F(mutation_log_test, replay_single_file_2000) { test_replay_single_file(2000); }
 
-        EXPECT_EQ(mlog->open(nullptr, nullptr), ERR_OK);
+TEST_F(mutation_log_test, replay_single_file_5000) { test_replay_single_file(5000); }
 
-        // divide the mutations into multiple blocks
-        for (int i = 0; i < batch_buffer_count * 10; i++) {
-            mutation_ptr mu = create_test_mutation("hello!", 2 + i);
-            mutations.push_back(mu);
-            mlog->append(mu, LPC_AIO_IMMEDIATE_CALLBACK, nullptr, nullptr, 0);
-        }
-    }
+TEST_F(mutation_log_test, replay_single_file_10000) { test_replay_single_file(10000); }
 
-    { // replaying logs
-        std::string log_file_path = log_dir + "/log.1.0";
-
-        error_code ec;
-        log_file_ptr file = log_file::open_read(log_file_path.c_str(), ec);
-        ASSERT_EQ(ec, ERR_OK);
-
-        int64_t end_offset;
-        int mutation_index = -1;
-        ec = mutation_log_replay(
-            file,
-            [&mutations, &mutation_index](int log_length, mutation_ptr &mu) -> bool {
-                mutation_ptr wmu = mutations[++mutation_index];
-                EXPECT_EQ(wmu->data.header, mu->data.header);
-                EXPECT_EQ(wmu->data.updates.size(), mu->data.updates.size());
-                ASSERT_BLOB_EQ(wmu->data.updates[0].data, mu->data.updates[0].data);
-                EXPECT_EQ(wmu->data.updates[0].code, mu->data.updates[0].code);
-                EXPECT_EQ(wmu->client_requests.size(), mu->client_requests.size());
-                return true;
-            },
-            end_offset);
-        ASSERT_EQ(ec, ERR_HANDLE_EOF) << ec.to_string();
-    }
-}
-
-TEST_F(mutation_log_test, write_and_read)
+// mutation_log::open
+TEST_F(mutation_log_test, open)
 {
     std::vector<mutation_ptr> mutations;
 
@@ -459,75 +520,15 @@ TEST_F(mutation_log_test, write_and_read)
     }
 }
 
-TEST_F(mutation_log_test, replay_multiple_files)
-{
-    std::vector<mutation_ptr> mutations;
-    int max_log_file_mb = 1;
+TEST_F(mutation_log_test, replay_multiple_files_10000_1mb) { test_replay_multiple_files(10000, 1); }
 
-    { // writing logs
-        mutation_log_ptr mlog =
-            new mutation_log_private(log_dir, max_log_file_mb, gpid, nullptr, 1024, 512, 10000);
-        EXPECT_EQ(mlog->open(nullptr, nullptr), ERR_OK);
+TEST_F(mutation_log_test, replay_multiple_files_20000_1mb) { test_replay_multiple_files(20000, 1); }
 
-        for (int f = 0; f < 20; f++) {
-            for (int i = 0; i < 1000; i++) {
-                mutation_ptr mu = create_test_mutation("hello!", 2 + i);
-                mutations.push_back(mu);
-                mlog->append(mu, LPC_AIO_IMMEDIATE_CALLBACK, nullptr, nullptr, 0);
-            }
-        }
-    }
-
-    { // reading logs
-        mutation_log_ptr mlog =
-            new mutation_log_private(log_dir, 4, gpid, nullptr, 1024, 512, 10000);
-
-        std::vector<std::string> log_files;
-        ASSERT_TRUE(utils::filesystem::get_subfiles(mlog->dir(), log_files, false));
-
-        int64_t end_offset;
-        int mutation_index = -1;
-        mutation_log::replay(
-            log_files,
-            [&mutations, &mutation_index](int log_length, mutation_ptr &mu) -> bool {
-                mutation_ptr wmu = mutations[++mutation_index];
-                EXPECT_EQ(wmu->data.header, mu->data.header);
-                EXPECT_EQ(wmu->data.updates.size(), mu->data.updates.size());
-                ASSERT_BLOB_EQ(wmu->data.updates[0].data, mu->data.updates[0].data);
-                EXPECT_EQ(wmu->data.updates[0].code, mu->data.updates[0].code);
-                EXPECT_EQ(wmu->client_requests.size(), mu->client_requests.size());
-                return true;
-            },
-            end_offset);
-        ASSERT_EQ(mutation_index + 1, (int)mutations.size());
-
-        // Ensure to have more than 1 files.
-        ASSERT_TRUE(log_files.size() > 1);
-    }
-}
+TEST_F(mutation_log_test, replay_multiple_files_50000_1mb) { test_replay_multiple_files(50000, 1); }
 
 // log_utils::open_log_file_map
-TEST_F(mutation_log_test, open_log_file_map)
-{
-    int max_log_file_mb = 1;
+TEST_F(mutation_log_test, open_log_file_map_4) { test_open_log_file_map(4); }
 
-    { // generate multiple log files
-        mutation_log_ptr mlog =
-            new mutation_log_private(log_dir, max_log_file_mb, gpid, nullptr, 1024, 512, 10000);
-        ASSERT_EQ(mlog->open(nullptr, nullptr), ERR_OK);
+TEST_F(mutation_log_test, open_log_file_map_8) { test_open_log_file_map(8); }
 
-        for (int f = 0; f < 4; f++) {
-            mutation_log_create_new_log_file(mlog);
-        }
-
-        dsn_task_tracker_wait_all(mlog->tracker());
-    }
-
-    {
-        auto log_files = log_utils::list_all_files_or_die(log_dir);
-        ASSERT_EQ(log_files.size(), 4);
-
-        auto log_file_map = log_utils::open_log_file_map(log_files);
-        ASSERT_EQ(log_file_map.size(), 4);
-    }
-}
+TEST_F(mutation_log_test, open_log_file_map_20) { test_open_log_file_map(20); }
