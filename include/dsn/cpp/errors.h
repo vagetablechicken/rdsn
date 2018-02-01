@@ -201,7 +201,7 @@ private:
 
 #define RETURN_NOT_OK(s)                                                                           \
     do {                                                                                           \
-        const error_s &_s = (s);                                                                   \
+        const ::dsn::error_s &_s = (s);                                                            \
         if (!_s.is_ok())                                                                           \
             return _s;                                                                             \
     } while (false);

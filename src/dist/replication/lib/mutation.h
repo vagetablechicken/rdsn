@@ -86,7 +86,7 @@ public:
 
     // state change
     void set_id(ballot b, decree c);
-    void set_timestamp(int64_t timestamp);
+    void set_timestamp(uint64_t timestamp);
     void add_client_request(task_code code, dsn_message_t request);
     void copy_from(mutation_ptr &old);
     void set_logged()
@@ -220,7 +220,7 @@ inline void mutation::set_id(ballot b, decree c)
                data.header.decree);
 }
 
-inline void mutation::set_timestamp(int64_t timestamp) { data.header.timestamp = timestamp; }
+inline void mutation::set_timestamp(uint64_t timestamp) { data.header.timestamp = timestamp; }
 }
 } // namespace
 

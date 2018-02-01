@@ -34,6 +34,8 @@ namespace replication {
 
 // This is an interface for handling the mutation logs intended to
 // be duplicated to remote cluster.
+// SEE: replication_app_base::get_duplication_backlog_handler
+//      replication_app_base::set_duplication_backlog_handler
 class duplication_backlog_handler
 {
 public:

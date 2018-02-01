@@ -451,7 +451,7 @@ error_code replication_app_base::open_new_internal(replica *r,
 }
 
 int replication_app_base::on_batched_write_requests(int64_t decree,
-                                                    int64_t timstamp,
+                                                    uint64_t timestamp,
                                                     dsn_message_t *requests,
                                                     int request_length)
 {
