@@ -123,8 +123,7 @@ class mutation_duplicator
                             (dsn_msg_serialize_format)update.serialization_type,
                             (void *)update.data.data(),
                             update.data.length());
-
-                        _mutations.push_back(req);
+                        _mutations.emplace_back(std::make_tuple(mu->data.header.timestamp, req));
                     }
 
                     // update last_decree
@@ -142,7 +141,7 @@ class mutation_duplicator
         }
 
         // After calling this function this `batch` is guaranteed to be empty.
-        std::vector<dsn_message_t> move_to_vec_message() { return std::move(_mutations); }
+        std::vector<mutation_tuple> move_to_mutation_tuples() { return std::move(_mutations); }
 
         decree last_decree() const { return _last_decree; }
 
@@ -151,7 +150,7 @@ class mutation_duplicator
         friend class mutation_duplicator_test;
 
         prepare_list _mutation_buffer;
-        std::vector<dsn_message_t> _mutations;
+        std::vector<mutation_tuple> _mutations;
         decree _last_decree;
         mutation_duplicator *_duplicator;
     };
@@ -333,7 +332,7 @@ public:
 
     void start_shipping_mutation_batch()
     {
-        std::vector<dsn_message_t> mutations = _mutation_batch->move_to_vec_message();
+        std::vector<mutation_tuple> mutations = _mutation_batch->move_to_mutation_tuples();
         enqueue_ship_mutations(mutations);
     }
 
@@ -395,7 +394,7 @@ public:
     }
 
     task_ptr
-    enqueue_ship_mutations(std::vector<dsn_message_t> &mutations,
+    enqueue_ship_mutations(std::vector<mutation_tuple> &mutations,
                            std::chrono::milliseconds delay_ms = std::chrono::milliseconds(0))
     {
         return tasking::enqueue(
@@ -406,7 +405,7 @@ public:
             delay_ms);
     }
 
-    void ship_mutations(std::vector<dsn_message_t> &mutations)
+    void ship_mutations(std::vector<mutation_tuple> &mutations)
     {
         if (_paused) {
             return;
@@ -415,7 +414,7 @@ public:
         ddebug_f("start shipping mutations [size: {}]", mutations.size());
 
         auto backlog_handler = _replica->get_app()->get_duplication_backlog_handler();
-        error_s err = backlog_handler->duplicate(&mutations);
+        error_s err = backlog_handler->duplicate(_remote_cluster_address, &mutations);
         if (!err.is_ok()) {
             derror_f("failed to ship mutations [gpid: {}]: {}", _replica->get_gpid(), err);
 

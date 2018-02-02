@@ -108,6 +108,8 @@ public:
     }
 
     // TCallback = void(dsn::error_code)
+    // NOTE that the `error_code` is not the error carried by response. Users should
+    // check the responded error themselves.
     template <typename TCallback>
     task_ptr
     call(::dsn::rpc_address server, clientlet *svc, TCallback &&callback, int reply_thread_hash = 0)
@@ -131,9 +133,6 @@ public:
               this ](error_code err, dsn_message_t req, dsn_message_t resp) mutable {
                 if (err == ERR_OK) {
                     ::dsn::unmarshall(resp, response());
-                }
-                if (response().err) {
-                    err = response().err;
                 }
                 cb_fwd(err);
             },

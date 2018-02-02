@@ -32,6 +32,10 @@
 namespace dsn {
 namespace replication {
 
+// Each of the mutation is a tuple made up of <timestamp, dsn_message_t>.
+// dsn_message_t is the write request serialized by upper-level application.
+typedef std::tuple<uint64_t, dsn_message_t> mutation_tuple;
+
 // This is an interface for handling the mutation logs intended to
 // be duplicated to remote cluster.
 // SEE: replication_app_base::get_duplication_backlog_handler
@@ -40,9 +44,9 @@ class duplication_backlog_handler
 {
 public:
     // Duplicate the given list of mutations.
-    // Each of the dsn_message_t is a mutation serialized by upper-level application.
     // It must be guaranteed that the mutations are in the order of the time they applied.
-    virtual error_s duplicate(std::vector<dsn_message_t> *mutations) = 0;
+    virtual error_s duplicate(const std::string &remote_cluster_address,
+                              std::vector<mutation_tuple> *mutations) = 0;
 
     virtual ~duplication_backlog_handler() = default;
 };

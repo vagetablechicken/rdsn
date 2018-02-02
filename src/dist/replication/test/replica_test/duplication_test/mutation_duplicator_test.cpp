@@ -50,11 +50,12 @@ inline std::string dsn_message_t_to_string(dsn_message_t req)
 struct mock_duplication_backlog_handler : public duplication_backlog_handler
 {
     // thread-safe
-    error_s duplicate(std::vector<dsn_message_t> *mutations) override
+    error_s duplicate(const std::string &remote_cluster_address,
+                      std::vector<mutation_tuple> *mutations) override
     {
         zauto_lock _(lock);
-        for (dsn_message_t req : *mutations) {
-            mutation_list.emplace_back(dsn_message_t_to_string(req));
+        for (mutation_tuple mut : *mutations) {
+            mutation_list.emplace_back(dsn_message_t_to_string(std::get<1>(mut)));
         }
         return error_s::ok();
     }
@@ -98,8 +99,8 @@ struct mutation_duplicator_test : public duplication_test_base
                              const std::vector<std::string> &expected)
     {
         std::vector<std::string> actual;
-        for (dsn_message_t msg : duplicator._mutation_batch->_mutations) {
-            actual.emplace_back(dsn_message_t_to_string(msg));
+        for (mutation_tuple mut : duplicator._mutation_batch->_mutations) {
+            actual.emplace_back(dsn_message_t_to_string(std::get<1>(mut)));
         }
         ASSERT_EQ(actual.size(), expected.size());
 
@@ -177,13 +178,13 @@ struct mutation_duplicator_test : public duplication_test_base
 
             {
                 duplicator->_paused = false; // set _paused to false to be able to start shipping.
-                auto messages = duplicator->_mutation_batch->move_to_vec_message();
+                auto mtuples = duplicator->_mutation_batch->move_to_mutation_tuples();
 
                 // pause immediately after shipping finishes.
                 tasking::enqueue(LPC_DUPLICATE_MUTATIONS,
                                  duplicator->tracker(),
-                                 [&duplicator, &messages]() {
-                                     duplicator->ship_mutations(messages);
+                                 [&duplicator, &mtuples]() {
+                                     duplicator->ship_mutations(mtuples);
                                      duplicator->pause();
                                  },
                                  gpid_to_thread_hash(replica->get_gpid()));
