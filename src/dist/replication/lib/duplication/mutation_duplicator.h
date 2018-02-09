@@ -123,7 +123,7 @@ class mutation_duplicator
                             (dsn_msg_serialize_format)update.serialization_type,
                             (void *)update.data.data(),
                             update.data.length());
-                        _mutations.emplace_back(std::make_tuple(mu->data.header.timestamp, req));
+                        _mutations.emplace(std::make_tuple(mu->data.header.timestamp, req));
                     }
 
                     // update last_decree
@@ -141,7 +141,7 @@ class mutation_duplicator
         }
 
         // After calling this function this `batch` is guaranteed to be empty.
-        std::vector<mutation_tuple> move_to_mutation_tuples() { return std::move(_mutations); }
+        std::set<mutation_tuple> move_to_mutation_tuples() { return std::move(_mutations); }
 
         decree last_decree() const { return _last_decree; }
 
@@ -150,7 +150,7 @@ class mutation_duplicator
         friend class mutation_duplicator_test;
 
         prepare_list _mutation_buffer;
-        std::vector<mutation_tuple> _mutations;
+        std::set<mutation_tuple> _mutations;
         decree _last_decree;
         mutation_duplicator *_duplicator;
     };
@@ -176,6 +176,9 @@ public:
                      _replica->last_durable_decree(),
                      ent.confirmed_decree);
         }
+
+        _backlog_handler = get_duplication_backlog_handler(_remote_cluster_address,
+                                                           _replica->get_app_info()->app_name);
 
         _view->confirmed_decree = ent.confirmed_decree;
         _view->status = ent.status;
@@ -332,8 +335,8 @@ public:
 
     void start_shipping_mutation_batch()
     {
-        std::vector<mutation_tuple> mutations = _mutation_batch->move_to_mutation_tuples();
-        enqueue_ship_mutations(mutations);
+        _pending_mutations = _mutation_batch->move_to_mutation_tuples();
+        enqueue_ship_mutations();
     }
 
     // Switches to the log file with index = current_log_index + 1.
@@ -394,39 +397,59 @@ public:
     }
 
     task_ptr
-    enqueue_ship_mutations(std::vector<mutation_tuple> &mutations,
-                           std::chrono::milliseconds delay_ms = std::chrono::milliseconds(0))
+    enqueue_ship_mutations(std::chrono::milliseconds delay_ms = std::chrono::milliseconds(0))
     {
-        return tasking::enqueue(
-            LPC_DUPLICATE_MUTATIONS,
-            tracker(),
-            std::bind(&mutation_duplicator::ship_mutations, this, std::move(mutations)),
-            gpid_to_thread_hash(_replica->get_gpid()),
-            delay_ms);
+        return tasking::enqueue(LPC_DUPLICATE_MUTATIONS,
+                                tracker(),
+                                std::bind(&mutation_duplicator::ship_mutations, this),
+                                gpid_to_thread_hash(_replica->get_gpid()),
+                                delay_ms);
     }
 
-    void ship_mutations(std::vector<mutation_tuple> &mutations)
+    void ship_mutations()
     {
         if (_paused) {
             return;
         }
 
-        ddebug_f("start shipping mutations [size: {}]", mutations.size());
+        dassert(!_pending_mutations.empty(), "");
+        ddebug_f("start shipping mutations [size: {}]", _pending_mutations.size());
 
-        auto backlog_handler = _replica->get_app()->get_duplication_backlog_handler();
-        error_s err = backlog_handler->duplicate(_remote_cluster_address, &mutations);
-        if (!err.is_ok()) {
-            derror_f("failed to ship mutations [gpid: {}]: {}", _replica->get_gpid(), err);
-
-            // retries forever until all mutations are duplicated.
-            enqueue_ship_mutations(mutations, std::chrono::milliseconds(1000));
-        } else {
-            duplication_view new_state = view().set_last_decree(_mutation_batch->last_decree());
-            update_state(new_state);
-
-            // delay 1 second to start next duplication job
-            enqueue_do_duplication(std::chrono::milliseconds(1000));
+        for (mutation_tuple mut : _pending_mutations) {
+            loop_to_duplicate(mut);
         }
+    }
+
+    void loop_to_duplicate(mutation_tuple mut)
+    {
+        if (_paused) {
+            return;
+        }
+
+        _backlog_handler->duplicate(mut, [this, mut](error_s err) {
+            if (!err.is_ok()) {
+                derror_f("failed to ship mutation [gpid: {}]: {}, timestamp: {}",
+                         _replica->get_gpid(),
+                         err,
+                         std::get<0>(mut));
+            }
+
+            ::dsn::service::zauto_lock _(_pending_lock);
+            if (err.is_ok()) {
+                _pending_mutations.erase(mut);
+
+                if (_pending_mutations.empty()) {
+                    duplication_view new_state =
+                        view().set_last_decree(_mutation_batch->last_decree());
+                    update_state(new_state);
+
+                    // delay 1 second to start next duplication job
+                    enqueue_do_duplication(std::chrono::milliseconds(1000));
+                }
+            } else {
+                loop_to_duplicate(mut);
+            }
+        });
     }
 
 private:
@@ -441,6 +464,10 @@ private:
     std::atomic<bool> _paused;
 
     std::unique_ptr<mutation_batch> _mutation_batch;
+    duplication_backlog_handler *_backlog_handler;
+
+    std::set<mutation_tuple> _pending_mutations;
+    mutable ::dsn::service::zlock _pending_lock;
 
     int64_t _current_end_offset;
     log_file_ptr _current_log_file;

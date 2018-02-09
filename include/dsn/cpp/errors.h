@@ -188,6 +188,8 @@ public:
 
     const error_s &get_error() const { return _err; }
 
+    error_s &get_error() { return _err; }
+
     bool is_ok() const { return _err.is_ok(); }
 
 private:

@@ -216,15 +216,6 @@ public:
                                           dsn_message_t *requests,
                                           int request_length);
 
-    duplication_backlog_handler *get_duplication_backlog_handler() const
-    {
-        return _duplication_backlog_handler.get();
-    }
-    void set_duplication_backlog_handler(duplication_backlog_handler *dbh)
-    {
-        _duplication_backlog_handler.reset(dbh);
-    }
-
 public:
     //
     // utility functions to be used by app

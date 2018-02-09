@@ -1,7 +1,8 @@
 set(MY_PROJ_NAME dsn_layer2_stateful_type1)
 
 set(DUPLICATION_SRC duplication/replica_duplication.cpp
-                    duplication/replica_stub_duplication.cpp)
+                    duplication/replica_stub_duplication.cpp
+                    duplication/duplication_backlog_handler.cpp)
 
 # Source files under CURRENT project directory will be automatically included.
 # You can manually set MY_PROJ_SRC to include source files under other directories.

@@ -49,15 +49,14 @@ inline std::string dsn_message_t_to_string(dsn_message_t req)
 
 struct mock_duplication_backlog_handler : public duplication_backlog_handler
 {
+    using err_callback = duplication_backlog_handler::err_callback;
+
     // thread-safe
-    error_s duplicate(const std::string &remote_cluster_address,
-                      std::vector<mutation_tuple> *mutations) override
+    void duplicate(mutation_tuple mut, err_callback cb) override
     {
         zauto_lock _(lock);
-        for (mutation_tuple mut : *mutations) {
-            mutation_list.emplace_back(dsn_message_t_to_string(std::get<1>(mut)));
-        }
-        return error_s::ok();
+        mutation_list.emplace_back(dsn_message_t_to_string(std::get<1>(mut)));
+        cb(error_s::ok());
     }
 
     // thread-safe
@@ -71,6 +70,16 @@ struct mock_duplication_backlog_handler : public duplication_backlog_handler
     mutable zlock lock;
 };
 
+struct mock_duplication_backlog_handler_group : public duplication_backlog_handler_group
+{
+    duplication_backlog_handler *get(const std::string &remote_cluster_address,
+                                     const std::string &app) override
+    {
+        static mock_duplication_backlog_handler backlog_handler;
+        return &backlog_handler;
+    }
+};
+
 struct mutation_duplicator_test : public duplication_test_base
 {
     using mutation_batch = mutation_duplicator::mutation_batch;
@@ -79,8 +88,11 @@ struct mutation_duplicator_test : public duplication_test_base
     {
         stub = make_unique<replica_stub>();
         replica = create_replica(stub.get(), 1, 1, log_dir.c_str());
-        backlog_handler = new mock_duplication_backlog_handler;
-        replica->get_app()->set_duplication_backlog_handler(backlog_handler);
+
+        duplication_backlog_handler_group::init_singleton_once(
+            new mock_duplication_backlog_handler_group);
+        backlog_handler = static_cast<mock_duplication_backlog_handler *>(
+            get_duplication_backlog_handler("", ""));
     }
 
     void SetUp() override
@@ -178,13 +190,14 @@ struct mutation_duplicator_test : public duplication_test_base
 
             {
                 duplicator->_paused = false; // set _paused to false to be able to start shipping.
-                auto mtuples = duplicator->_mutation_batch->move_to_mutation_tuples();
+                duplicator->_pending_mutations =
+                    duplicator->_mutation_batch->move_to_mutation_tuples();
 
                 // pause immediately after shipping finishes.
                 tasking::enqueue(LPC_DUPLICATE_MUTATIONS,
                                  duplicator->tracker(),
-                                 [&duplicator, &mtuples]() {
-                                     duplicator->ship_mutations(mtuples);
+                                 [&duplicator]() {
+                                     duplicator->ship_mutations();
                                      duplicator->pause();
                                  },
                                  gpid_to_thread_hash(replica->get_gpid()));

@@ -32,24 +32,66 @@
 namespace dsn {
 namespace replication {
 
-// Each of the mutation is a tuple made up of <timestamp, dsn_message_t>.
-// dsn_message_t is the write request serialized by upper-level application.
+/// \brief Each of the mutation is a tuple made up of <timestamp, dsn_message_t>.
+/// dsn_message_t is the write request serialized by upper-level application.
 typedef std::tuple<uint64_t, dsn_message_t> mutation_tuple;
 
-// This is an interface for handling the mutation logs intended to
-// be duplicated to remote cluster.
-// SEE: replication_app_base::get_duplication_backlog_handler
-//      replication_app_base::set_duplication_backlog_handler
+/// \brief This is an interface for handling the mutation logs intended to
+/// be duplicated to remote cluster.
+/// \see dsn::replication::mutation_duplicator
 class duplication_backlog_handler
 {
 public:
-    // Duplicate the given list of mutations.
-    // It must be guaranteed that the mutations are in the order of the time they applied.
-    virtual error_s duplicate(const std::string &remote_cluster_address,
-                              std::vector<mutation_tuple> *mutations) = 0;
+    typedef std::function<void(dsn::error_s)> err_callback;
+
+    /// Duplicate the provided mutation to the remote cluster.
+    /// It must be guaranteed the mutations are in the order of the time they applied.
+    ///
+    /// \param cb: Call it when a specified mutation was sent successfully or
+    ///            failed with an error.
+    virtual void duplicate(mutation_tuple mutation, err_callback cb) = 0;
 
     virtual ~duplication_backlog_handler() = default;
 };
+
+/// \internal
+/// A singleton interface to get duplication_backlog_handler for specified
+/// remote cluster and app.
+class duplication_backlog_handler_group
+{
+public:
+    virtual duplication_backlog_handler *get(const std::string &remote_cluster_address,
+                                             const std::string &app) = 0;
+
+    // thread-safe
+    static duplication_backlog_handler_group *get_singleton()
+    {
+        dassert(_inited && _instance != nullptr,
+                "duplication_backlog_handler_group must have been initialized");
+        return _instance.get();
+    }
+
+    // thread-safe
+    static void init_singleton_once(duplication_backlog_handler_group *group)
+    {
+        std::call_once(_once_flag, [group]() {
+            _instance.reset(group);
+            _inited = true;
+        });
+    }
+
+private:
+    static std::unique_ptr<duplication_backlog_handler_group> _instance;
+    static std::once_flag _once_flag;
+    static std::atomic<bool> _inited;
+};
+
+/// \brief A helper utility of duplication_backlog_handler_group::get.
+inline duplication_backlog_handler *
+get_duplication_backlog_handler(const std::string &remote_cluster_address, const std::string &app)
+{
+    return duplication_backlog_handler_group::get_singleton()->get(remote_cluster_address, app);
+}
 
 } // namespace replication
 } // namespace dsn
