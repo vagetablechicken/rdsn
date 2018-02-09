@@ -79,9 +79,18 @@ public:
             _i = std::make_shared<internal>(req);
         }
     }
-    rpc_holder(std::unique_ptr<TRequest> req, dsn_task_code_t code) : _i(new internal(req, code)) {}
+
+    rpc_holder(std::unique_ptr<TRequest> req,
+               dsn_task_code_t code,
+               std::chrono::milliseconds timeout_milliseconds = std::chrono::milliseconds(0),
+               uint64_t partition_hash = 0)
+        : _i(new internal(req, code, timeout_milliseconds, partition_hash))
+    {
+    }
 
     // copyable and movable
+    // Copying an rpc_holder doesn't produce a deep copy, the new instance will
+    // reference the same rpc internal data. So, just feel free to copy :)
     rpc_holder(const rpc_holder &) = default;
     rpc_holder(rpc_holder &&) noexcept = default;
     rpc_holder &operator=(const rpc_holder &) = default;
@@ -183,12 +192,17 @@ private:
             dsn::unmarshall(req, *thrift_request);
         }
 
-        internal(std::unique_ptr<TRequest> &req, dsn_task_code_t code)
+        internal(std::unique_ptr<TRequest> &req,
+                 dsn_task_code_t code,
+                 std::chrono::milliseconds timeout,
+                 uint64_t partition_hash)
             : thrift_request(std::move(req))
         {
             dassert(thrift_request != nullptr, "req should not be null");
 
-            dsn_request = dsn_msg_create_request(code);
+            // leave thread_hash to 0
+            dsn_request =
+                dsn_msg_create_request(code, static_cast<int>(timeout.count()), 0, partition_hash);
             dsn_msg_add_ref(dsn_request);
             dsn::marshall(dsn_request, *thrift_request);
         }
