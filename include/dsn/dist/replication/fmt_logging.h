@@ -30,7 +30,7 @@
 
 // The macros below no longer use the default snprintf method for log message formatting,
 // instead we use fmt::format.
-// TODO(wutao1): prevent contruction of std::string for each log.
+// TODO(wutao1): prevent construction of std::string for each log.
 
 #define dinfo_f(...) dinfo(fmt::format(__VA_ARGS__).c_str())
 #define ddebug_f(...) ddebug(fmt::format(__VA_ARGS__).c_str())

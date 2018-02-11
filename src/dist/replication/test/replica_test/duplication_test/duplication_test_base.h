@@ -32,6 +32,8 @@
 #include "dist/replication/lib/duplication/replica_duplication.h"
 #include "dist/replication/test/replica_test/unit_test/test_utils.h"
 
+#include "mock_duplication_backlog_handler.h"
+
 namespace dsn {
 namespace replication {
 
@@ -101,6 +103,13 @@ public:
 
 struct duplication_test_base : public ::testing::Test
 {
+    duplication_test_base()
+    {
+        duplication::init_backlog_handler_factory(new mock_duplication_backlog_handler_factory);
+    }
+
+    ~duplication_test_base() { duplication_backlog_handler_factory::undo_init(); }
+
     static std::unique_ptr<mock_replica> create_replica(replica_stub *stub,
                                                         int appid = 1,
                                                         int partition_index = 1,

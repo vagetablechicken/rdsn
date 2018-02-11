@@ -29,70 +29,14 @@
 namespace dsn {
 namespace replication {
 
-inline std::string dsn_message_t_to_string(dsn_message_t req)
-{
-    req = dsn_msg_copy(req, true, false);
-
-    void *s;
-    size_t len;
-
-    dsn_msg_read_next(req, &s, &len);
-    blob bb((char *)s, 0, len);
-    binary_reader reader(bb);
-
-    std::string data;
-    reader.read(data);
-    dsn_msg_read_commit(req, len);
-
-    return data;
-}
-
-struct mock_duplication_backlog_handler : public duplication_backlog_handler
-{
-    using err_callback = duplication_backlog_handler::err_callback;
-
-    // thread-safe
-    void duplicate(mutation_tuple mut, err_callback cb) override
-    {
-        zauto_lock _(lock);
-        mutation_list.emplace_back(dsn_message_t_to_string(std::get<1>(mut)));
-        cb(error_s::ok());
-    }
-
-    // thread-safe
-    std::vector<std::string> get_mutation_list_safe()
-    {
-        zauto_lock _(lock);
-        return mutation_list;
-    }
-
-    std::vector<std::string> mutation_list;
-    mutable zlock lock;
-};
-
-struct mock_duplication_backlog_handler_group : public duplication_backlog_handler_group
-{
-    duplication_backlog_handler *get(const std::string &remote_cluster_address,
-                                     const std::string &app) override
-    {
-        static mock_duplication_backlog_handler backlog_handler;
-        return &backlog_handler;
-    }
-};
-
 struct mutation_duplicator_test : public duplication_test_base
 {
     using mutation_batch = mutation_duplicator::mutation_batch;
 
-    mutation_duplicator_test() : log_dir("./test-log")
+    mutation_duplicator_test() : duplication_test_base(), log_dir("./test-log")
     {
         stub = make_unique<replica_stub>();
         replica = create_replica(stub.get(), 1, 1, log_dir.c_str());
-
-        duplication_backlog_handler_group::init_singleton_once(
-            new mock_duplication_backlog_handler_group);
-        backlog_handler = static_cast<mock_duplication_backlog_handler *>(
-            get_duplication_backlog_handler("", ""));
     }
 
     void SetUp() override
@@ -104,7 +48,6 @@ struct mutation_duplicator_test : public duplication_test_base
     void TearDown() override
     {
         //        utils::filesystem::remove_path(log_dir);
-        backlog_handler->mutation_list.clear();
     }
 
     void ASSERT_MUTATIONS_EQ(const mutation_duplicator &duplicator,
@@ -207,6 +150,8 @@ struct mutation_duplicator_test : public duplication_test_base
             // all mutations must have been shipped now.
             ASSERT_MUTATIONS_EQ(*duplicator, std::vector<std::string>());
 
+            auto backlog_handler = dynamic_cast<mock_duplication_backlog_handler *>(
+                duplicator->_backlog_handler.get());
             ASSERT_EQ(backlog_handler->mutation_list, mutations)
                 << backlog_handler->mutation_list.size() << " vs " << mutations.size();
         }
@@ -240,6 +185,9 @@ struct mutation_duplicator_test : public duplication_test_base
             auto duplicator = create_test_duplicator();
             duplicator->start();
 
+            auto backlog_handler = dynamic_cast<mock_duplication_backlog_handler *>(
+                duplicator->_backlog_handler.get());
+
             while (backlog_handler->get_mutation_list_safe().size() < mutations.size()) {
                 sleep(1);
             }
@@ -256,7 +204,6 @@ struct mutation_duplicator_test : public duplication_test_base
 
     std::unique_ptr<mock_replica> replica;
     std::unique_ptr<replica_stub> stub;
-    mock_duplication_backlog_handler *backlog_handler;
 };
 
 TEST_F(mutation_duplicator_test, new_duplicator)

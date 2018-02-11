@@ -29,9 +29,9 @@
 namespace dsn {
 namespace replication {
 
-std::once_flag duplication_backlog_handler_group::_once_flag;
-std::unique_ptr<duplication_backlog_handler_group> duplication_backlog_handler_group::_instance;
-std::atomic<bool> duplication_backlog_handler_group::_inited(false);
+std::unique_ptr<duplication_backlog_handler_factory> duplication_backlog_handler_factory::_instance;
+std::atomic<bool> duplication_backlog_handler_factory::_inited(false);
+std::mutex duplication_backlog_handler_factory::_lock;
 
 } // namespace replication
 } // namespace dsn
