@@ -47,6 +47,7 @@
 #include "server_state.h"
 #include "meta_server_failure_detector.h"
 #include "server_load_balancer.h"
+#include "dist/replication/meta_server/duplication/meta_duplication_service.h"
 
 #ifdef __TITLE__
 #undef __TITLE__
@@ -269,6 +270,9 @@ error_code meta_service::start()
         derror("initialize server state from remote storage failed, err = %s, retry ...",
                err.to_string());
     }
+
+    initialize_duplication_service();
+    recover_duplication_from_meta_state();
 
     _state->register_cli_commands();
 
@@ -699,7 +703,9 @@ void meta_service::on_query_restore_status(dsn_message_t req)
                      std::bind(&server_state::on_query_restore_status, _state.get(), req));
 }
 
-// ============== duplication related rpc ===============
+/// ================================================================= ///
+/// ============== duplication related implementation =============== ///
+/// ================================================================= ///
 
 void meta_service::on_add_duplication(duplication_add_rpc rpc)
 {
@@ -707,7 +713,10 @@ void meta_service::on_add_duplication(duplication_add_rpc rpc)
 
     tasking::enqueue(LPC_META_STATE_NORMAL,
                      nullptr,
-                     std::bind(&server_state::add_duplication, _state.get(), rpc),
+                     [this, rpc]() {
+                         dassert(_dup_svc, "duplication_impl is uninitialized");
+                         _dup_svc->add_duplication(std::move(rpc));
+                     },
                      server_state::sStateHash);
 }
 
@@ -717,7 +726,10 @@ void meta_service::on_change_duplication_status(duplication_status_change_rpc rp
 
     tasking::enqueue(LPC_META_STATE_NORMAL,
                      this,
-                     std::bind(&server_state::change_duplication_status, _state.get(), rpc),
+                     [this, rpc]() {
+                         dassert(_dup_svc, "duplication_impl is uninitialized");
+                         _dup_svc->change_duplication_status(std::move(rpc));
+                     },
                      server_state::sStateHash);
 }
 
@@ -725,7 +737,8 @@ void meta_service::on_query_duplication_info(duplication_query_rpc rpc)
 {
     RPC_CHECK_STATUS(rpc.dsn_request(), rpc.response());
 
-    _state->query_duplication_info(rpc);
+    dassert(_dup_svc, "duplication_impl is uninitialized");
+    _dup_svc->query_duplication_info(rpc);
 }
 
 // SEE: replica_stub::duplication_impl::duplication_sync
@@ -735,8 +748,17 @@ void meta_service::on_duplication_sync(duplication_sync_rpc rpc)
 
     tasking::enqueue(LPC_META_STATE_NORMAL,
                      this,
-                     std::bind(&server_state::duplication_sync, _state.get(), rpc),
+                     [this, rpc]() {
+                         dassert(_dup_svc, "duplication_impl is uninitialized");
+                         _dup_svc->duplication_sync(std::move(rpc));
+                     },
                      server_state::sStateHash);
+}
+
+void meta_service::recover_duplication_from_meta_state()
+{
+    _dup_svc->recover_from_meta_state();
+    _dup_svc->wait_all();
 }
 
 void meta_service::register_duplication_rpc_handlers()
@@ -752,5 +774,11 @@ void meta_service::register_duplication_rpc_handlers()
     register_rpc_handler_with_rpc_holder(
         RPC_CM_DUPLICATION_SYNC, "sync duplication", &meta_service::on_duplication_sync);
 }
+
+void meta_service::initialize_duplication_service()
+{
+    _dup_svc = dsn::make_unique<meta_duplication_service>(_state.get(), this);
+}
+
 }
 }

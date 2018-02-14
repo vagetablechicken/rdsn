@@ -1362,7 +1362,7 @@ dsn::error_code replication_ddl_client::change_dup_status(const std::string &app
     resp_task->wait();
     if (resp_task->error() != dsn::ERR_OK) {
         fmt::print("failed to change duplication status: [app_name: {}, dupid: {}, status: {}] "
-                   "unable to send rpc to server: %s\n",
+                   "unable to send rpc to server: {}\n",
                    app_name,
                    dupid,
                    duplication_status_to_string(status),
@@ -1405,7 +1405,7 @@ dsn::error_code replication_ddl_client::query_dup(const std::string &app_name,
     ::dsn::unmarshall(resp_task->response(), *resp);
     if (resp->err != dsn::ERR_OK) {
         fmt::print("failed to query duplication info: [app_name: {}] "
-                   "server responded: [}\n",
+                   "server responded: {}\n",
                    app_name,
                    resp->err.to_string());
         return resp->err;

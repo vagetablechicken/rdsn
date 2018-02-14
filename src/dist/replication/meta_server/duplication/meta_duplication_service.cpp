@@ -29,7 +29,7 @@
 
 #include "dist/replication/meta_server/meta_service.h"
 
-#include "server_state_duplication.h"
+#include "meta_duplication_service.h"
 
 namespace dsn {
 namespace replication {
@@ -56,7 +56,7 @@ inline duplication_entry construct_duplication_entry(const duplication_info &dup
 
 // Handle the request for duplication info of specific table.
 // ThreadPool(READ): THREAD_POOL_META_SERVER
-void server_state::duplication_impl::query_duplication_info(duplication_query_rpc &rpc)
+void meta_duplication_service::query_duplication_info(duplication_query_rpc &rpc)
 {
     const auto &request = rpc.request();
     auto &response = rpc.response();
@@ -85,7 +85,7 @@ void server_state::duplication_impl::query_duplication_info(duplication_query_rp
 
 // Lock: no lock held.
 // ThreadPool(WRITE): THREAD_POOL_META_STATE
-void server_state::duplication_impl::do_duplication_status_change(
+void meta_duplication_service::do_duplication_status_change(
     std::shared_ptr<app_state> app, duplication_info_s_ptr dup, duplication_status_change_rpc &rpc)
 {
     auto on_write_storage_complete = [this, rpc, app, dup](error_code error) {
@@ -108,7 +108,7 @@ void server_state::duplication_impl::do_duplication_status_change(
             dwarn("the storage service is not available currently, try again after 1 second");
             tasking::enqueue(LPC_META_STATE_HIGH,
                              tracker(),
-                             std::bind(&duplication_impl::do_duplication_status_change,
+                             std::bind(&meta_duplication_service::do_duplication_status_change,
                                        this,
                                        std::move(app),
                                        std::move(dup),
@@ -131,7 +131,7 @@ void server_state::duplication_impl::do_duplication_status_change(
 }
 
 // ThreadPool(WRITE): THREAD_POOL_META_STATE
-void server_state::duplication_impl::change_duplication_status(duplication_status_change_rpc rpc)
+void meta_duplication_service::change_duplication_status(duplication_status_change_rpc rpc)
 {
     const auto &request = rpc.request();
     auto &response = rpc.response();
@@ -169,14 +169,14 @@ void server_state::duplication_impl::change_duplication_status(duplication_statu
 
 // Lock: no lock held.
 // ThreadPool(WRITE): THREAD_POOL_META_STATE
-void server_state::duplication_impl::do_add_duplication(std::shared_ptr<app_state> app,
+void meta_duplication_service::do_add_duplication(std::shared_ptr<app_state> app,
                                                         duplication_info_s_ptr dup,
                                                         duplication_add_rpc rpc)
 {
     auto on_write_storage_complete = [this, app, dup, rpc](error_code ec) {
 
         auto retry_do_add_duplication =
-            std::bind(&duplication_impl::do_add_duplication, this, app, dup, rpc);
+            std::bind(&meta_duplication_service::do_add_duplication, this, app, dup, rpc);
 
         auto &resp = rpc.response();
         if (ec == ERR_OK || ec == ERR_NODE_ALREADY_EXIST) {
@@ -216,7 +216,7 @@ void server_state::duplication_impl::do_add_duplication(std::shared_ptr<app_stat
         dup->store_path, LPC_META_STATE_HIGH, on_write_storage_complete, value, tracker());
 }
 
-void server_state::duplication_impl::do_create_parent_dir_before_adding_duplication(
+void meta_duplication_service::do_create_parent_dir_before_adding_duplication(
     std::shared_ptr<app_state> app, duplication_info_s_ptr dup, duplication_add_rpc rpc)
 {
     std::string parent_path = get_duplication_path(*app);
@@ -224,7 +224,7 @@ void server_state::duplication_impl::do_create_parent_dir_before_adding_duplicat
 
     auto on_create_parent_complete = [this, app, dup, rpc](error_code ec) {
         auto retry_this = std::bind(
-            &duplication_impl::do_create_parent_dir_before_adding_duplication, this, app, dup, rpc);
+            &meta_duplication_service::do_create_parent_dir_before_adding_duplication, this, app, dup, rpc);
 
         if (ec == ERR_OK || ec == ERR_NODE_ALREADY_EXIST) {
             do_add_duplication(app, dup, rpc);
@@ -248,7 +248,7 @@ void server_state::duplication_impl::do_create_parent_dir_before_adding_duplicat
 // Note that the rpc will not create a new one if the duplication
 // with the same app and remote end point already exists.
 // ThreadPool(WRITE): THREAD_POOL_META_STATE
-void server_state::duplication_impl::add_duplication(duplication_add_rpc rpc)
+void meta_duplication_service::add_duplication(duplication_add_rpc rpc)
 {
     const auto &request = rpc.request();
     auto &response = rpc.response();
@@ -304,7 +304,7 @@ void server_state::duplication_impl::add_duplication(duplication_add_rpc rpc)
 }
 
 // ThreadPool(WRITE): THREAD_POOL_META_STATE
-void server_state::duplication_impl::duplication_sync(duplication_sync_rpc rpc)
+void meta_duplication_service::duplication_sync(duplication_sync_rpc rpc)
 {
     auto &request = rpc.request();
     auto &response = rpc.response();
@@ -345,7 +345,7 @@ void server_state::duplication_impl::duplication_sync(duplication_sync_rpc rpc)
 
 // Locks: no lock held
 // ThreadPool(WRITE): THREAD_POOL_META_STATE
-void server_state::duplication_impl::do_update_progress_on_replica(
+void meta_duplication_service::do_update_progress_on_replica(
     const node_state &ns,
     const dsn::gpid &gpid,
     const std::vector<duplication_confirm_entry> &confirm_points,
@@ -380,7 +380,7 @@ void server_state::duplication_impl::do_update_progress_on_replica(
 }
 
 // NOTE: dup_map never includes those apps that don't have a duplication.
-void server_state::duplication_impl::do_get_dup_map_on_replica(
+void meta_duplication_service::do_get_dup_map_on_replica(
     const node_state &ns, std::map<int32_t, std::vector<duplication_entry>> *dup_map) const
 {
     ns.for_each_partition([this, &dup_map, &ns](const gpid &pid) -> bool {
@@ -411,7 +411,7 @@ void server_state::duplication_impl::do_get_dup_map_on_replica(
     });
 }
 
-server_state::duplication_impl::duplication_impl(server_state *state, meta_service *meta)
+meta_duplication_service::meta_duplication_service(server_state *state, meta_service *meta)
     : _state(state), _meta_svc(meta), _tracker(1)
 {
     dassert(_state, "duplication_impl::duplication_impl: _state should not be null");
@@ -419,7 +419,7 @@ server_state::duplication_impl::duplication_impl(server_state *state, meta_servi
 }
 
 std::shared_ptr<duplication_info>
-server_state::duplication_impl::new_dup_from_init(const std::string &remote_cluster_address,
+meta_duplication_service::new_dup_from_init(const std::string &remote_cluster_address,
                                                   app_state *app) const
 {
     duplication_info_s_ptr dup;
@@ -441,7 +441,7 @@ server_state::duplication_impl::new_dup_from_init(const std::string &remote_clus
 }
 
 // ThreadPool(WRITE): THREAD_POOL_META_STATE
-void server_state::duplication_impl::recover_from_meta_state()
+void meta_duplication_service::recover_from_meta_state()
 {
     for (const auto &kv : _state->_exist_apps) {
         auto app = kv.second;
@@ -451,7 +451,7 @@ void server_state::duplication_impl::recover_from_meta_state()
 }
 
 // ThreadPool(WRITE): THREAD_POOL_META_STATE
-void server_state::duplication_impl::do_recover_from_meta_state_for_app(
+void meta_duplication_service::do_recover_from_meta_state_for_app(
     std::shared_ptr<app_state> app)
 {
     _meta_svc->get_remote_storage()->get_children(
@@ -470,7 +470,7 @@ void server_state::duplication_impl::do_recover_from_meta_state_for_app(
                 }
             } else if (ec == ERR_TIMEOUT) {
                 auto retry_this = std::bind(
-                    &duplication_impl::do_recover_from_meta_state_for_app, this, std::move(app));
+                    &meta_duplication_service::do_recover_from_meta_state_for_app, this, std::move(app));
 
                 derror("request was timeout, retry again after 1 second "
                        "[do_recover_from_meta_state_for_app]");
@@ -487,7 +487,7 @@ void server_state::duplication_impl::do_recover_from_meta_state_for_app(
         tracker());
 }
 
-void server_state::duplication_impl::do_restore_dup_from_meta_state(const std::string &dupid,
+void meta_duplication_service::do_restore_dup_from_meta_state(const std::string &dupid,
                                                                     std::shared_ptr<app_state> app)
 {
     _meta_svc->get_remote_storage()->get_data(
@@ -499,7 +499,7 @@ void server_state::duplication_impl::do_restore_dup_from_meta_state(const std::s
                 app->duplications[dup->id] = dup;
             } else if (ec == ERR_TIMEOUT) {
                 auto retry_this =
-                    std::bind(&duplication_impl::do_restore_dup_from_meta_state, this, dupid, app);
+                    std::bind(&meta_duplication_service::do_restore_dup_from_meta_state, this, dupid, app);
 
                 derror("request was timeout, retry again after 1 second "
                        "[do_restore_dup_from_meta_state]");
@@ -514,40 +514,6 @@ void server_state::duplication_impl::do_restore_dup_from_meta_state(const std::s
             }
         },
         tracker());
-}
-
-// SEE: meta_service::on_query_duplication_info
-void server_state::query_duplication_info(duplication_query_rpc rpc)
-{
-    dassert(_duplication_impl, "duplication_impl is uninitialized");
-    _duplication_impl->query_duplication_info(rpc);
-}
-
-// SEE: meta_service::on_add_duplication
-void server_state::add_duplication(duplication_add_rpc rpc)
-{
-    dassert(_duplication_impl, "duplication_impl is uninitialized");
-    _duplication_impl->add_duplication(std::move(rpc));
-}
-
-// SEE: meta_service::on_change_duplication_status
-void server_state::change_duplication_status(duplication_status_change_rpc rpc)
-{
-    dassert(_duplication_impl, "duplication_impl is uninitialized");
-    _duplication_impl->change_duplication_status(std::move(rpc));
-}
-
-// SEE: meta_service::on_duplication_sync
-void server_state::duplication_sync(duplication_sync_rpc rpc)
-{
-    dassert(_duplication_impl, "duplication_impl is uninitialized");
-    _duplication_impl->duplication_sync(std::move(rpc));
-}
-
-void server_state::recover_from_meta_state()
-{
-    dassert(_duplication_impl, "duplication_impl is uninitialized");
-    _duplication_impl->recover_from_meta_state();
 }
 
 } // namespace replication

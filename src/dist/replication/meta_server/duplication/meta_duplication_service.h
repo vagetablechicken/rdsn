@@ -32,21 +32,17 @@
 namespace dsn {
 namespace replication {
 
-class server_state::duplication_impl
+class meta_duplication_service
 {
 public:
-    duplication_impl(server_state *ss, meta_service *ms);
+    meta_duplication_service(server_state *ss, meta_service *ms);
 
-    // Implementation of server_state::query_duplication_info
     void query_duplication_info(duplication_query_rpc &rpc);
 
-    // Implementation of server_state::add_duplication
     void add_duplication(duplication_add_rpc rpc);
 
-    // Implementation of server_state::change_duplication_status
     void change_duplication_status(duplication_status_change_rpc rpc);
 
-    // Implementation of server_state::duplication_sync
     void duplication_sync(duplication_sync_rpc rpc);
 
     // Create a new duplication from INIT state.
@@ -56,6 +52,8 @@ public:
 
     // Recover from meta state storage.
     void recover_from_meta_state();
+
+    /// ================================= Implementation =================================== ///
 
     void do_recover_from_meta_state_for_app(std::shared_ptr<app_state> app);
 
@@ -106,7 +104,7 @@ public:
     void wait_all() { dsn_task_tracker_wait_all(tracker()->tracker()); }
 
 private:
-    friend class server_state_duplication_test;
+    friend class meta_duplication_service_test;
 
     server_state *_state;
 

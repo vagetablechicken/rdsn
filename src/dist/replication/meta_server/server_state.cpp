@@ -46,7 +46,6 @@
 #include "meta_service.h"
 #include "server_state.h"
 #include "server_load_balancer.h"
-#include "duplication/server_state_duplication.h"
 
 #ifdef __TITLE__
 #undef __TITLE__
@@ -105,8 +104,6 @@ void server_state::initialize(meta_service *meta_svc, const std::string &apps_ro
 {
     _meta_svc = meta_svc;
     _apps_root = apps_root;
-
-    _duplication_impl.reset(new duplication_impl(this, meta_svc));
 
     _dead_partition_count.init_app_counter("eon.server_state",
                                            "dead_partition_count",

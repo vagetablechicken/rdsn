@@ -180,13 +180,6 @@ public:
     void set_config_change_subscriber_for_test(config_change_subscriber subscriber);
     void set_replica_migration_subscriber_for_test(replica_migration_subscriber subscriber);
 
-    // for duplication
-    void query_duplication_info(duplication_query_rpc rpc);
-    void add_duplication(duplication_add_rpc rpc);
-    void change_duplication_status(duplication_status_change_rpc rpc);
-    void duplication_sync(duplication_sync_rpc rpc);
-    void recover_from_meta_state();
-
 private:
     //-1 means waiting forever
     bool spin_wait_staging(int timeout_seconds = -1);
@@ -291,7 +284,9 @@ private:
     friend class replication_checker;
     friend class test::test_checker;
     friend class ::meta_service_test_app;
-    friend class server_state_duplication_test;
+
+    friend class meta_duplication_service_test;
+    friend class meta_duplication_service;
 
     meta_service *_meta_svc;
     std::string _apps_root;
@@ -312,9 +307,6 @@ private:
     replica_migration_subscriber _replica_migration_subscriber;
 
     dsn_handle_t _cli_dump_handle;
-
-    class duplication_impl;
-    std::unique_ptr<duplication_impl> _duplication_impl;
 
     perf_counter_wrapper _dead_partition_count;
     perf_counter_wrapper _unreadable_partition_count;

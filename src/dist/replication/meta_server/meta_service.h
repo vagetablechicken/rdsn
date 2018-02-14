@@ -54,6 +54,7 @@ class server_state;
 class meta_server_failure_detector;
 class server_load_balancer;
 class replication_checker;
+class meta_duplication_service;
 namespace test {
 class test_checker;
 }
@@ -150,6 +151,8 @@ private:
     void on_query_duplication_info(duplication_query_rpc rpc);
     void on_duplication_sync(duplication_sync_rpc rpc);
     void register_duplication_rpc_handlers();
+    void recover_duplication_from_meta_state();
+    void initialize_duplication_service();
 
     // common routines
     // ret:
@@ -164,7 +167,6 @@ private:
     friend class replication_checker;
     friend class test::test_checker;
     friend class ::meta_service_test_app;
-    friend class server_state_duplication_test;
 
     replication_options _opts;
     meta_options _meta_opts;
@@ -174,6 +176,10 @@ private:
     std::shared_ptr<dist::meta_state_service> _storage;
     std::shared_ptr<server_load_balancer> _balancer;
     std::shared_ptr<backup_service> _backup_handler;
+
+    friend class meta_duplication_service_test;
+    friend class meta_duplication_service;
+    std::unique_ptr<meta_duplication_service> _dup_svc;
 
     // handle all the block filesystems for current meta service
     // (in other words, current service node)
