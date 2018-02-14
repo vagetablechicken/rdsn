@@ -612,6 +612,10 @@ void replica_stub::initialize_start()
     } else {
         _state = NS_Connected;
     }
+
+    if (_options.duplication_sync_interval_ms != 0) {
+        _duplication_impl->init_duplication_confirm_timer();
+    }
 }
 
 dsn::error_code replica_stub::on_kill_replica(gpid pid)

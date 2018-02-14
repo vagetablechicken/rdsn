@@ -201,8 +201,10 @@ private:
     friend class ::dsn::replication::test::test_checker;
     friend class ::dsn::replication::replica;
     friend class ::dsn::replication::cold_backup_context;
+
     friend class mock_replica_stub;
     friend class replica_stub_duplication_test;
+    friend class replica_duplication_test;
 
     typedef std::unordered_map<gpid, ::dsn::task_ptr> opening_replicas;
     typedef std::unordered_map<gpid, std::pair<::dsn::task_ptr, replica_ptr>>

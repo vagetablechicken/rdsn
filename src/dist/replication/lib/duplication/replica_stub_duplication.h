@@ -53,7 +53,7 @@ public:
 
     void call_duplication_sync_rpc(std::unique_ptr<duplication_sync_request> req);
 
-    void update_duplication_map(const std::map<int32_t, std::vector<duplication_entry>> &dup_map);
+    void update_duplication_map(std::map<int32_t, std::vector<duplication_entry>> &dup_map);
 
     void update_confirmed_points(
         const std::map<gpid, std::vector<duplication_confirm_entry>> &confirmed_lists);

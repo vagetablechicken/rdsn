@@ -56,10 +56,14 @@ void replica::duplication_impl::sync_duplication(const duplication_entry &ent)
     dupid_t dupid = ent.dupid;
     duplication_status::type next_status = ent.status;
 
-    auto it = _duplications.find(dupid);
-    if (it == _duplications.end()) {
-        auto dup = std::make_shared<mutation_duplicator>(ent, _replica);
-        _duplications[ent.dupid] = std::move(dup);
+    mutation_duplicator_s_ptr dup = _duplications[dupid];
+    if (dup == nullptr) {
+        dup = std::make_shared<mutation_duplicator>(ent, _replica);
+        _duplications[ent.dupid] = dup;
+    } else {
+        if (dup->view().status == next_status) {
+            return;
+        }
     }
 
     update_duplication_status(dupid, next_status);
@@ -68,11 +72,12 @@ void replica::duplication_impl::sync_duplication(const duplication_entry &ent)
 void replica::duplication_impl::update_duplication_status(dupid_t dupid,
                                                           duplication_status::type next_status)
 {
-    mutation_duplicator *dup = _duplications[dupid].get();
+    ddebug_f("changing status of duplication(dupid: {}, gpid: {}) to {}",
+             dupid,
+             _replica->get_gpid(),
+             duplication_status_to_string(next_status));
 
-    if (dup->view().status == next_status) {
-        return;
-    }
+    mutation_duplicator *dup = _duplications[dupid].get();
 
     if (next_status == duplication_status::DS_START) {
         dup->start_duplication();
@@ -113,6 +118,32 @@ int64_t replica::duplication_impl::min_confirmed_decree() const
     }
     dassert(min_decree >= 0, "invalid min_decree %" PRId64, min_decree);
     return min_decree;
+}
+
+// Remove the duplications that are not in the `dup_list`.
+void replica::duplication_impl::remove_non_existed_duplications(
+    std::vector<duplication_entry> &dup_list)
+{
+    std::set<dupid_t> new_set;
+    std::set<dupid_t> remove_set;
+
+    for (const auto &dup_ent : dup_list) {
+        new_set.insert(dup_ent.dupid);
+    }
+
+    for (auto &pair : _duplications) {
+        dupid_t dupid = pair.first;
+
+        // if the duplication is not found in `dup_list`, remove it.
+        if (new_set.find(dupid) == new_set.end()) {
+            pair.second->pause();
+            remove_set.insert(dupid);
+        }
+    }
+
+    for (dupid_t dupid : remove_set) {
+        _duplications.erase(dupid);
+    }
 }
 
 } // namespace replication

@@ -119,8 +119,9 @@ void replica_stub::duplication_impl::on_duplication_sync_reply(error_code err,
     }
 }
 
+// dup_map: <appid -> list<dup_entry>>
 void replica_stub::duplication_impl::update_duplication_map(
-    const std::map<int32_t, std::vector<duplication_entry>> &dup_map)
+    std::map<int32_t, std::vector<duplication_entry>> &dup_map)
 {
     zauto_lock l(_stub->_replicas_lock);
 
@@ -132,16 +133,11 @@ void replica_stub::duplication_impl::update_duplication_map(
             continue;
         }
 
-        auto it = dup_map.find(pid.get_app_id());
-        if (it == dup_map.end()) {
-            r->_duplication_impl->remove_all_duplications();
-            continue;
-        }
-
-        auto &duplication_entry_list = it->second;
-        for (const duplication_entry &dup_ent : duplication_entry_list) {
+        std::vector<duplication_entry> dup_ent_list = std::move(dup_map[pid.get_app_id()]);
+        for (const duplication_entry &dup_ent : dup_ent_list) {
             r->_duplication_impl->sync_duplication(dup_ent);
         }
+        r->_duplication_impl->remove_non_existed_duplications(dup_ent_list);
     }
 }
 

@@ -41,6 +41,31 @@ struct replica_stub_duplication_test : public duplication_test_base
 
     void TearDown() override { stub.reset(); }
 
+    void test_on_duplication_sync_reply()
+    {
+        // replica: {app_id:2, partition_id:1, duplications:{}}
+        stub->add_primary_replica(2, 1);
+        ASSERT_NE(stub->find_replica(2, 1), nullptr);
+
+        auto req = dsn::make_unique<duplication_sync_request>();
+        duplication_sync_rpc rpc(std::move(req), RPC_CM_DUPLICATION_SYNC);
+
+        // appid:2 -> dupid:1
+        duplication_entry ent;
+        ent.dupid = 1;
+        ent.remote_address = "dsn://slave-cluster";
+        ent.status = duplication_status::DS_START;
+        ent.confirmed_decree = 0;
+        rpc.response().dup_map[2] = {ent};
+
+        dup_impl->on_duplication_sync_reply(dsn::ERR_OK, rpc);
+        mutation_duplicator_s_ptr dup =
+            stub->find_replica(2, 1)->get_replica_duplication_impl()._duplications[1];
+
+        ASSERT_TRUE(dup);
+        ASSERT_EQ(dup->view().status, duplication_status::DS_START);
+    }
+
 protected:
     std::unique_ptr<mock_replica_stub> stub;
     mock_replica_stub::duplication_impl *dup_impl;
@@ -160,7 +185,7 @@ TEST_F(replica_stub_duplication_test, update_duplication_map)
     {
         dup_map.erase(3);
         dup_impl->update_duplication_map(dup_map);
-        ASSERT_EQ(find_dup(stub->find_replica(3, 1), 2), nullptr);
+        ASSERT_TRUE(find_dup(stub->find_replica(3, 1), 2) == nullptr);
     }
 }
 
@@ -222,4 +247,9 @@ TEST_F(replica_stub_duplication_test, update_confirmed_points)
 
         ASSERT_EQ(dup->view().confirmed_decree, 3);
     }
+}
+
+TEST_F(replica_stub_duplication_test, on_duplication_sync_reply)
+{
+    test_on_duplication_sync_reply();
 }

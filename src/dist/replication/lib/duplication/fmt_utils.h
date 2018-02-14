@@ -32,7 +32,6 @@
 
 namespace fmt {
 
-// TODO(wutao1): Move it to core lib.
 inline void format_arg(fmt::BasicFormatter<char> &f, const char *format_str, const dsn::gpid &p)
 {
     f.writer().write("{}.{}", p.get_app_id(), p.get_partition_index());

@@ -26,16 +26,46 @@
 
 #include "duplication_test_base.h"
 
-using namespace dsn::replication;
+namespace dsn {
+namespace replication {
 
 struct replica_duplication_test : public duplication_test_base
 {
+    void SetUp() override
+    {
+        stub = dsn::make_unique<mock_replica_stub>();
+    }
+
+    void TearDown() override { stub.reset(); }
+
+    void test_remove_non_existed_duplications()
+    {
+        auto r = stub->add_primary_replica(2, 1);
+        auto d = r->get_replica_duplication_impl();
+
+        duplication_entry ent;
+        ent.dupid = 1;
+        ent.status = duplication_status::DS_START;
+        ent.remote_address = "dsn://slave-cluster";
+        d.sync_duplication(ent);
+        ASSERT_EQ(d._duplications.size(), 1);
+
+        // remove all dup
+        std::vector<duplication_entry> empty_list;
+        d.remove_non_existed_duplications(empty_list);
+        ASSERT_EQ(d._duplications.size(), 0);
+
+        ent.dupid = 2;
+        d.sync_duplication(ent);
+        ASSERT_EQ(d._duplications.size(), 1);
+    }
+
+    std::unique_ptr<mock_replica_stub> stub;
 };
 
 TEST_F(replica_duplication_test, get_duplication_confirms)
 {
-    auto stub = dsn::make_unique<replica_stub>();
-    auto r = create_replica(stub.get());
+    auto r = stub->add_primary_replica(2, 1);
     auto d = r->get_replica_duplication_impl();
 
     int total_dup_num = 10;
@@ -45,22 +75,30 @@ TEST_F(replica_duplication_test, get_duplication_confirms)
         duplication_entry ent;
         ent.dupid = id;
 
-        auto dup = dsn::make_unique<mutation_duplicator>(ent, r.get());
+        auto dup = dsn::make_unique<mutation_duplicator>(ent, r);
         dup->update_state(dup->view().set_last_decree(2).set_confirmed_decree(1));
-        add_dup(r.get(), std::move(dup));
+        add_dup(r, std::move(dup));
     }
 
     for (dupid_t id = update_dup_num + 1; id <= total_dup_num; id++) {
         duplication_entry ent;
         ent.dupid = id;
 
-        auto dup = dsn::make_unique<mutation_duplicator>(ent, r.get());
+        auto dup = dsn::make_unique<mutation_duplicator>(ent, r);
         dup->update_state(dup->view().set_last_decree(1).set_confirmed_decree(1));
-        add_dup(r.get(), std::move(dup));
+        add_dup(r, std::move(dup));
     }
 
     auto result = r->get_replica_duplication_impl().get_duplication_confirms_to_update();
     ASSERT_EQ(result.size(), update_dup_num);
 }
 
+TEST_F(replica_duplication_test, remove_non_existed_duplications)
+{
+    test_remove_non_existed_duplications();
+}
+
 TEST_F(replica_duplication_test, min_confirmed_decree) {}
+
+} // namespace dsn
+} // namespace replication

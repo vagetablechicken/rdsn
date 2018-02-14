@@ -127,13 +127,13 @@ struct duplication_test_base : public ::testing::Test
         r->get_replica_duplication_impl()._duplications[dup->id()] = std::move(dup);
     }
 
-    static mutation_duplicator *find_dup(mock_replica *r, dupid_t dupid)
+    static mutation_duplicator_s_ptr find_dup(mock_replica *r, dupid_t dupid)
     {
         auto &dup_entities = r->get_replica_duplication_impl()._duplications;
         if (dup_entities.find(dupid) == dup_entities.end()) {
             return nullptr;
         }
-        return dup_entities[dupid].get();
+        return dup_entities[dupid];
     }
 };
 

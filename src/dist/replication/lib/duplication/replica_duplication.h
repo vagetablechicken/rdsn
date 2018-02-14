@@ -61,42 +61,12 @@ public:
     // SEE: replica::on_checkpoint_timer()
     int64_t min_confirmed_decree() const;
 
-    bool has_dup_running() const { return !_duplications.empty(); }
-
-    void remove_all_duplications() { _duplications.clear(); }
-
-private:
-    // call this function whenever caller is in async tasks,
-    // where we may have lost our leadership, and the duplication may have been stopped.
-    boost::optional<mutation_duplicator *> check_if_not_primary_or_dup_not_found(dupid_t dupid)
-    {
-        if (_replica->status() != partition_status::PS_PRIMARY) {
-            ddebug("duplication(%d) on a non-primary replica(%s, %s)",
-                   dupid,
-                   _replica->name(),
-                   enum_to_string(_replica->status()));
-            // TODO(wutao1): remove this dup, or clear up _duplications?
-            return boost::none;
-        }
-
-        auto it = _duplications.find(dupid);
-        if (it == _duplications.end()) {
-            ddebug("cannot find dup(%d) on this replica(%s, %s)",
-                   dupid,
-                   _replica->name(),
-                   enum_to_string(_replica->status()));
-            return boost::none;
-        }
-
-        return it->second.get();
-    }
-
-    // assert that there's only a single task on this thread.
-    void assert_single_task_on_this_thread() { _replica->check_hashed_access(); }
+    void remove_non_existed_duplications(std::vector<duplication_entry> &);
 
 private:
     friend class duplication_test_base;
     friend class replica_stub_duplication_test;
+    friend class replica_duplication_test;
 
     replica *_replica;
 
