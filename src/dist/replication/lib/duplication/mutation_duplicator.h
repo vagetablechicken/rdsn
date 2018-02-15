@@ -178,7 +178,7 @@ public:
         }
 
         _backlog_handler = duplication::new_backlog_handler(_remote_cluster_address,
-                _replica->get_app_info()->app_name);
+                                                            _replica->get_app_info()->app_name);
 
         _view->confirmed_decree = ent.confirmed_decree;
         _view->status = ent.status;
@@ -415,7 +415,12 @@ public:
         dassert(!_pending_mutations.empty(), "");
         ddebug_f("start shipping mutations [size: {}]", _pending_mutations.size());
 
-        for (mutation_tuple mut : _pending_mutations) {
+        std::set<mutation_tuple> pending_mutations;
+        {
+            ::dsn::service::zauto_lock _(_pending_lock);
+            pending_mutations = _pending_mutations; // copy to prevent interleaving
+        }
+        for (mutation_tuple mut : pending_mutations) {
             loop_to_duplicate(mut);
         }
     }
@@ -434,6 +439,8 @@ public:
                          std::get<0>(mut));
             }
 
+            // impose a lock here since there may have multiple tasks
+            // erasing elements in the pending set.
             ::dsn::service::zauto_lock _(_pending_lock);
             if (err.is_ok()) {
                 _pending_mutations.erase(mut);

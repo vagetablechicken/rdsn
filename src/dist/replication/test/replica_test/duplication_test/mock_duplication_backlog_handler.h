@@ -27,6 +27,7 @@
 
 #include <dsn/dist/replication/duplication_backlog_handler.h>
 #include <dsn/cpp/zlocks.h>
+#include <dsn/utility/message_utils.h>
 
 namespace dsn {
 namespace replication {
@@ -34,29 +35,20 @@ namespace replication {
 inline std::string dsn_message_t_to_string(dsn_message_t req)
 {
     req = dsn_msg_copy(req, true, false);
+    blob bb = dsn::move_dsn_message_t_to_blob(req);
 
-    void *s;
-    size_t len;
-
-    dsn_msg_read_next(req, &s, &len);
-    blob bb((char *)s, 0, len);
     binary_reader reader(bb);
-
     std::string data;
     reader.read(data);
-    dsn_msg_read_commit(req, len);
-
     return data;
 }
 
 struct mock_duplication_backlog_handler : public duplication_backlog_handler
 {
-    using err_callback = duplication_backlog_handler::err_callback;
-
     // thread-safe
     void duplicate(mutation_tuple mut, err_callback cb) override
     {
-        ::dsn::service::zauto_lock _(lock);
+        std::lock_guard<std::mutex> _(lock);
         mutation_list.emplace_back(dsn_message_t_to_string(std::get<1>(mut)));
         cb(error_s::ok());
     }
@@ -64,12 +56,12 @@ struct mock_duplication_backlog_handler : public duplication_backlog_handler
     // thread-safe
     std::vector<std::string> get_mutation_list_safe()
     {
-        ::dsn::service::zauto_lock _(lock);
+        std::lock_guard<std::mutex> _(lock);
         return mutation_list;
     }
 
     std::vector<std::string> mutation_list;
-    mutable ::dsn::service::zlock lock;
+    mutable std::mutex lock;
 };
 
 struct mock_duplication_backlog_handler_factory : public duplication_backlog_handler_factory
