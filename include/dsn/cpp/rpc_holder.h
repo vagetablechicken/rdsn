@@ -139,9 +139,9 @@ public:
             dsn_request(),
             svc,
             [ cb_fwd = std::forward<TCallback>(callback),
-              this ](error_code err, dsn_message_t req, dsn_message_t resp) mutable {
+              rpc = *this ](error_code err, dsn_message_t req, dsn_message_t resp) mutable {
                 if (err == ERR_OK) {
-                    ::dsn::unmarshall(resp, response());
+                    ::dsn::unmarshall(resp, rpc.response());
                 }
                 cb_fwd(err);
             },
