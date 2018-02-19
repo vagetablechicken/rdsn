@@ -25,15 +25,25 @@
 // This `dsn::string_view` abstraction is designed to be a drop-in
 // replacement for the C++17 `std::string_view` abstraction.
 //
-// Update(wutao1): This file is copied from abseil, though in order to maintain minimum
+// --- Update(wutao1) ---
+//
+// This file is copied from abseil, though in order to maintain minimum
 // dependencies, abseil is not an requirement. The dsn::string_view consists of only
-// a subset of functions that std::string_view and absl::string_view provide.
+// a subset of functions that std::string_view and absl::string_view provide, so that
+// we can keep this module lightweight, but reducing the generality.
+//
+// dsn::string_view also supports view of dsn::blob, which can also function as a constant
+// view. However, dsn::blob is not designed to be as lightweight as dsn::string_view
+// since it requires at least one atomic operation to copy the internal std::shared_ptr.
+// So in most cases where data is immutable, using dsn::string_view over dsn::blob will
+// be a more proper choice.
 
 #pragma once
 
 #include <cstring>
 #include <algorithm>
 #include <cassert>
+#include <dsn/utility/blob.h>
 
 namespace dsn {
 
@@ -152,6 +162,8 @@ public:
         : ptr_(str.data()), length_(str.size())
     {
     }
+
+    string_view(const blob &buf) noexcept : ptr_(buf.data()), length_(buf.length()) {}
 
     constexpr string_view(const char *str) // NOLINT(runtime/explicit)
         : ptr_(str),
