@@ -22,10 +22,7 @@ protected:
                                                            void (*handler)(T *svc, TRpcHolder rpc))
     {
         rpc_handler h = [handler](T *p, dsn_message_t request) {
-            TRpcHolder rpc(request);
-            rpc.auto_reply();
-
-            handler(p, rpc);
+            handler(p, TRpcHolder::auto_reply(request));
         };
 
         return register_async_rpc_handler(rpc_code, name, h);

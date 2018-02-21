@@ -150,10 +150,15 @@ public:
         return t;
     }
 
-    // Implies that rpc_holder will reply the request after its lifetime ends.
+    // Returns an rpc_holder that will reply the request after its lifetime ends.
     // By default rpc_holder never replies.
     // SEE: serverlet<T>::register_rpc_handler_with_rpc_holder
-    void auto_reply() { _i->auto_reply = true; }
+    static inline rpc_holder auto_reply(dsn_message_t req)
+    {
+        rpc_holder rpc(req);
+        rpc._i->auto_reply = true;
+        return rpc;
+    }
 
     // Only use this function when testing.
     // In mock mode, all messages will be dropped into mail_box without going through network,
@@ -207,14 +212,19 @@ private:
             dsn::marshall(dsn_request, *thrift_request);
         }
 
+        void reply()
+        {
+            dsn_message_t dsn_response = dsn_msg_create_response(dsn_request);
+            ::dsn::marshall(dsn_response, thrift_response);
+            dsn_rpc_reply(dsn_response);
+        }
+
         ~internal()
         {
             dsn_msg_release_ref(dsn_request);
 
             if (auto_reply) {
-                dsn_message_t dsn_response = dsn_msg_create_response(dsn_request);
-                ::dsn::marshall(dsn_response, thrift_response);
-                dsn_rpc_reply(dsn_response);
+                reply();
             }
         }
 

@@ -236,10 +236,7 @@ inline bool serverlet<T>::register_rpc_handler_with_rpc_holder(dsn_task_code_t r
 
     dsn_rpc_request_handler_t cb = [](dsn_message_t request, void *param) {
         auto hc2 = (hc_type *)param;
-        TRpcHolder rpc(request);
-        rpc.auto_reply();
-
-        ((hc2->this_)->*(hc2->cb))(rpc);
+        ((hc2->this_)->*(hc2->cb))(TRpcHolder::auto_reply(request));
     };
 
     return dsn_rpc_register_handler(rpc_code, rpc_description, cb, hc, gpid);
