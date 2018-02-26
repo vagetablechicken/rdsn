@@ -39,11 +39,6 @@
 #include "replica_stub.h"
 #include <dsn/dist/replication/replication_app_base.h>
 
-#ifdef __TITLE__
-#undef __TITLE__
-#endif
-#define __TITLE__ "replica.2pc"
-
 namespace dsn {
 namespace replication {
 
@@ -99,13 +94,12 @@ void replica::init_prepare(mutation_ptr &mu)
         if (_options->prepare_decree_gap_for_debug_logging > 0 &&
             mu->get_decree() % _options->prepare_decree_gap_for_debug_logging == 0)
             level = LOG_LEVEL_DEBUG;
-        mu->set_timestamp(generate_timestamp());
+        mu->set_timestamp(get_uniq_timestamp());
     } else {
         mu->set_id(get_ballot(), mu->data.header.decree);
     }
 
     dlog(level,
-         __TITLE__,
          "%s: mutation %s init_prepare, mutation_tid=%" PRIu64,
          name(),
          mu->name(),

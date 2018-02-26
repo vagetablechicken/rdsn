@@ -35,11 +35,6 @@
 
 #include "prepare_list.h"
 
-#ifdef __TITLE__
-#undef __TITLE__
-#endif
-#define __TITLE__ "prepare_list"
-
 namespace dsn {
 namespace replication {
 
@@ -198,6 +193,5 @@ bool prepare_list::commit(decree d, commit_type ct)
 
     return false;
 }
-
 }
 } // namespace end

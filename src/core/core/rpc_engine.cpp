@@ -53,11 +53,6 @@
 #include <dsn/cpp/serialization.h>
 #include <set>
 
-#ifdef __TITLE__
-#undef __TITLE__
-#endif
-#define __TITLE__ "rpc.engine"
-
 namespace dsn {
 
 DEFINE_TASK_CODE(LPC_RPC_TIMEOUT, TASK_PRIORITY_COMMON, THREAD_POOL_DEFAULT)
@@ -349,7 +344,7 @@ void rpc_client_matcher::on_call(message_ex *request, rpc_response_task *call)
 //----------------------------------------------------------------------------------------------
 rpc_server_dispatcher::rpc_server_dispatcher()
 {
-    _vhandlers.resize(dsn_task_code_max() + 1);
+    _vhandlers.resize(dsn::task_code::max() + 1);
     for (auto &h : _vhandlers) {
         h = new std::pair<rpc_handler_info *, utils::rw_lock_nr>();
         h->first = nullptr;
@@ -369,7 +364,7 @@ rpc_server_dispatcher::~rpc_server_dispatcher()
 
 bool rpc_server_dispatcher::register_rpc_handler(rpc_handler_info *handler)
 {
-    auto name = std::string(dsn_task_code_to_string(handler->code));
+    std::string name(handler->code.to_string());
 
     utils::auto_write_lock l(_handlers_lock);
     auto it = _handlers.find(name);
@@ -389,12 +384,12 @@ bool rpc_server_dispatcher::register_rpc_handler(rpc_handler_info *handler)
     }
 }
 
-rpc_handler_info *rpc_server_dispatcher::unregister_rpc_handler(dsn_task_code_t rpc_code)
+rpc_handler_info *rpc_server_dispatcher::unregister_rpc_handler(dsn::task_code rpc_code)
 {
     rpc_handler_info *ret;
     {
         utils::auto_write_lock l(_handlers_lock);
-        auto it = _handlers.find(dsn_task_code_to_string(rpc_code));
+        auto it = _handlers.find(rpc_code.to_string());
         if (it == _handlers.end())
             return nullptr;
 
@@ -626,7 +621,7 @@ bool rpc_engine::register_rpc_handler(rpc_handler_info *handler)
     return _rpc_dispatcher.register_rpc_handler(handler);
 }
 
-rpc_handler_info *rpc_engine::unregister_rpc_handler(dsn_task_code_t rpc_code)
+rpc_handler_info *rpc_engine::unregister_rpc_handler(dsn::task_code rpc_code)
 {
     return _rpc_dispatcher.unregister_rpc_handler(rpc_code);
 }
@@ -683,19 +678,19 @@ void rpc_engine::on_recv_request(network *net, message_ex *msg, int delay_ms)
                 tsk->release_ref();
             }
         } else {
-            derror("recv message with unhandled rpc name %s from %s, trace_id = %016" PRIx64,
-                   msg->header->rpc_name,
-                   msg->header->from_address.to_string(),
-                   msg->header->trace_id);
+            dwarn("recv message with unhandled rpc name %s from %s, trace_id = %016" PRIx64,
+                  msg->header->rpc_name,
+                  msg->header->from_address.to_string(),
+                  msg->header->trace_id);
 
             dassert(msg->get_count() == 0, "request should not be referenced by anybody so far");
             delete msg;
         }
     } else {
-        derror("recv message with unknown rpc name %s from %s, trace_id = %016" PRIx64,
-               msg->header->rpc_name,
-               msg->header->from_address.to_string(),
-               msg->header->trace_id);
+        dwarn("recv message with unknown rpc name %s from %s, trace_id = %016" PRIx64,
+              msg->header->rpc_name,
+              msg->header->from_address.to_string(),
+              msg->header->trace_id);
 
         dassert(msg->get_count() == 0, "request should not be referenced by anybody so far");
         delete msg;

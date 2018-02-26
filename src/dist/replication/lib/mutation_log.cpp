@@ -41,18 +41,13 @@
 #include <dsn/utility/filesystem.h>
 #include <dsn/utility/crc.h>
 
-#ifdef __TITLE__
-#undef __TITLE__
-#endif
-#define __TITLE__ "mutation_log"
-
 namespace dsn {
 namespace replication {
 
 using namespace ::dsn::service;
 
 ::dsn::task_ptr mutation_log_shared::append(mutation_ptr &mu,
-                                            dsn_task_code_t callback_code,
+                                            dsn::task_code callback_code,
                                             clientlet *callback_host,
                                             aio_handler &&callback,
                                             int hash)
@@ -216,7 +211,7 @@ void mutation_log_shared::write_pending_mutations(bool release_lock_required)
 ////////////////////////////////////////////////////
 
 ::dsn::task_ptr mutation_log_private::append(mutation_ptr &mu,
-                                             dsn_task_code_t callback_code,
+                                             dsn::task_code callback_code,
                                              clientlet *callback_host,
                                              aio_handler &&callback,
                                              int hash)
@@ -1945,7 +1940,7 @@ log_block *log_file::prepare_log_block()
 
 ::dsn::task_ptr log_file::commit_log_block(log_block &block,
                                            int64_t offset,
-                                           dsn_task_code_t evt,
+                                           dsn::task_code evt,
                                            clientlet *callback_host,
                                            aio_handler &&callback,
                                            int hash)

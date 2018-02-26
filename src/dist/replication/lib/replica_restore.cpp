@@ -13,11 +13,6 @@
 #include "replica_stub.h"
 #include "../client_lib/block_service_manager.h"
 
-#ifdef __TITLE__
-#undef __TITLE__
-#endif
-#define __TITLE__ "replica.restore"
-
 using namespace dsn::dist::block_service;
 
 namespace dsn {
@@ -162,13 +157,13 @@ dsn::error_code replica::download_checkpoint(const configuration_restore_request
                     f->get_md5sum().c_str());
                 err = ERR_FILE_OPERATION_FAILED;
             } else {
-                ddebug("%s: download file to (%s) succeed, size(%" PRId64 ")",
-                       name(),
-                       local_file.c_str(),
-                       d_resp.downloaded_size);
                 _cur_download_size.fetch_add(f->get_size());
                 update_restore_progress();
-                ddebug("%s: current restore progress(%d)", name(), _restore_progress.load());
+                ddebug("%s: download file(%s) succeed, size(%" PRId64 "), progress(%d)",
+                       name(),
+                       local_file.c_str(),
+                       d_resp.downloaded_size,
+                       _restore_progress.load());
                 report_restore_status_to_meta();
             }
         }
@@ -535,7 +530,7 @@ void replica::report_restore_status_to_meta()
             configuration_report_restore_status_response response;
             ::dsn::unmarshall(resp, response);
             if (response.err == ERR_OK) {
-                ddebug("report restore status succeed");
+                dinfo("report restore status succeed");
                 return;
             }
         } else if (err == ERR_TIMEOUT) {

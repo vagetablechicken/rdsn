@@ -47,11 +47,6 @@
 #include "disk_engine.h"
 #include "rpc_engine.h"
 
-#ifdef __TITLE__
-#undef __TITLE__
-#endif
-#define __TITLE__ "task"
-
 namespace dsn {
 __thread struct __tls_dsn__ tls_dsn;
 __thread uint16_t tls_dsn_lower32_task_id_mask = 0;
@@ -127,7 +122,7 @@ __thread uint16_t tls_dsn_lower32_task_id_mask = 0;
     }
 }
 
-task::task(dsn_task_code_t code,
+task::task(dsn::task_code code,
            void *context,
            dsn_task_cancelled_handler_t on_cancel,
            int hash,
@@ -452,7 +447,7 @@ void task::enqueue(task_worker_pool *pool)
     pool->enqueue(this);
 }
 
-timer_task::timer_task(dsn_task_code_t code,
+timer_task::timer_task(dsn::task_code code,
                        dsn_task_handler_t cb,
                        void *context,
                        dsn_task_cancelled_handler_t on_cancel,
@@ -490,8 +485,8 @@ void timer_task::exec()
 }
 
 rpc_request_task::rpc_request_task(message_ex *request, rpc_handler_info *h, service_node *node)
-    : task(dsn_task_code_t(h->code), // it is possible that request->local_rpc_code != h->code when
-                                     // it is handled in frameworks
+    : task(dsn::task_code(h->code), // it is possible that request->local_rpc_code != h->code when
+                                    // it is handled in frameworks
            nullptr,
            [](void *) { dassert(false, "rpc request task cannot be cancelled"); },
            request->header->client.thread_hash,
@@ -662,7 +657,7 @@ bool rpc_response_task::reset_callback()
     }
 }
 
-aio_task::aio_task(dsn_task_code_t code,
+aio_task::aio_task(dsn::task_code code,
                    dsn_aio_handler_t cb,
                    void *context,
                    dsn_task_cancelled_handler_t on_cancel,

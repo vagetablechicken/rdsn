@@ -10,6 +10,14 @@
 using namespace dsn;
 using namespace dsn::dist::block_service;
 
+static std::string example_server_address = "<server-address>";
+// please modify the the paras below to enable fds_service_test, default fds_service_test will be
+// skipped and return true
+static std::string server_address = "<server-address>";
+static std::string access_key = "<access-key>";
+static std::string access_secret = "<access-secret>";
+static std::string bucket_name = "<test-bucket-name>";
+
 static void pipe_execute(const char *command, std::stringstream &output)
 {
     std::array<char, 256> buffer;
@@ -125,10 +133,12 @@ TEST_F(FDSClientTest, test_basic_operation)
 
     std::shared_ptr<fds_service> s = std::make_shared<fds_service>();
     // server, access-key, access-secret, bucket_name
-    std::vector<std::string> args = {"cnbj1-fds.api.xiaomi.net",
-                                     "AK2TBDCN7PIPNKCWIX",
-                                     "Fi1N30xEKZz0iLKflt0rGIZvFRtExx/ziDIC2gVy",
-                                     "sunweijie-pegasus-test-bucket"};
+    std::vector<std::string> args = {server_address, access_key, access_secret, bucket_name};
+
+    if (server_address == example_server_address) {
+        // user don't specify the server-address, we just return true
+        return;
+    }
 
     s->initialize(args);
 
@@ -725,10 +735,12 @@ TEST_F(FDSClientTest, test_concurrent_upload_download)
     }
 
     std::shared_ptr<fds_service> _service = std::make_shared<fds_service>();
-    std::vector<std::string> init_str = {"cnbj1-fds.api.xiaomi.net",
-                                         "AK2TBDCN7PIPNKCWIX",
-                                         "Fi1N30xEKZz0iLKflt0rGIZvFRtExx/ziDIC2gVy",
-                                         "sunweijie-pegasus-test-bucket"};
+    std::vector<std::string> init_str = {server_address, access_key, access_secret, bucket_name};
+
+    if (server_address == example_server_address) {
+        // user don't specify the server-address, we just return true
+        return;
+    }
 
     _service->initialize(init_str);
 
@@ -873,11 +885,12 @@ TEST_F(FDSClientTest, test_concurrent_upload_download)
 //    }
 //
 //    std::shared_ptr<fds_service> _service = std::make_shared<fds_service>();
-//    std::vector<std::string> init_str = {"cnbj1-fds.api.xiaomi.net",
-//                                         "AK2TBDCN7PIPNKCWIX",
-//                                         "Fi1N30xEKZz0iLKflt0rGIZvFRtExx/ziDIC2gVy",
-//                                         "sunweijie-pegasus-test-bucket"};
+//    std::vector<std::string> init_str = {server_address, access_key, access_secret, bucket_name};
 //
+//    if (server_address == example_server_address) {
+//        // user don't specify the server-address, we just return true
+//        return;
+//    }
 //    _service->initialize(init_str);
 //
 //    create_file_response cf_resp;

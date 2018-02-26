@@ -36,11 +36,6 @@
 #include <dsn/toollet/fault_injector.h>
 #include <dsn/service_api_c.h>
 
-#ifdef __TITLE__
-#undef __TITLE__
-#endif
-#define __TITLE__ "toollet.fault_injector"
-
 namespace dsn {
 namespace tools {
 
@@ -306,15 +301,16 @@ void fault_injector::install(service_spec &spec)
 {
     task_ext_for_fj::register_ext();
 
-    s_fj_opts = new fj_opt[dsn_task_code_max() + 1];
+    s_fj_opts = new fj_opt[dsn::task_code::max() + 1];
     fj_opt default_opt;
     read_config("task..default", default_opt);
 
-    for (int i = 0; i <= dsn_task_code_max(); i++) {
+    for (int i = 0; i <= dsn::task_code::max(); i++) {
         if (i == TASK_CODE_INVALID)
             continue;
 
-        std::string section_name = std::string("task.") + std::string(dsn_task_code_to_string(i));
+        std::string section_name =
+            std::string("task.") + std::string(dsn::task_code(i).to_string());
         task_spec *spec = task_spec::get(i);
         dassert(spec != nullptr, "task_spec cannot be null");
 
