@@ -26,22 +26,51 @@
 
 #include <dsn/tool-api/rpc_message.h>
 #include <dsn/utility/message_utils.h>
+#include <dsn/dist/replication/replication.codes.h>
+#include <dsn/cpp/serialization_helper/dsn.layer2_types.h>
+#include <dsn/cpp/rpc_holder.h>
 #include <gtest/gtest.h>
 
 using namespace dsn;
 
 DEFINE_TASK_CODE_RPC(RPC_CODE_FOR_TEST, TASK_PRIORITY_COMMON, THREAD_POOL_DEFAULT)
 
+typedef rpc_holder<configuration_query_by_index_request, configuration_query_by_index_response>
+    t_rpc;
+
 TEST(message_utils, msg_blob_convertion)
 {
     std::string data = "hello";
 
     blob b(data.c_str(), 0, data.size());
-    dsn_message_t m = copy_blob_to_dsn_message_t(b, RPC_CODE_FOR_TEST);
+    dsn_message_t m = move_blob_to_received_message(RPC_CODE_FOR_TEST, std::move(b));
 
     ASSERT_EQ(dsn_msg_body_size(m), data.size());
+    ASSERT_EQ(b.to_string(), move_dsn_message_t_to_blob(m).to_string());
+}
 
-    // copy for read
-    m = dsn_msg_copy(m, true, true);
-    ASSERT_EQ(b, move_dsn_message_t_to_blob(m));
+TEST(message_utils, thrift_msg_convertion)
+{
+    configuration_query_by_index_request request;
+    request.app_name = "haha";
+
+    dsn_message_t msg =
+        from_thrift_request_to_received_message(request, RPC_CM_QUERY_PARTITION_CONFIG_BY_INDEX);
+
+    t_rpc rpc(msg);
+    ASSERT_EQ(rpc.request().app_name, "haha");
+}
+
+TEST(message_utils, complex_convertion)
+{
+    configuration_query_by_index_request request;
+    request.app_name = "haha";
+
+    dsn_message_t msg =
+        from_thrift_request_to_received_message(request, RPC_CM_QUERY_PARTITION_CONFIG_BY_INDEX);
+    blob b = move_dsn_message_t_to_blob(msg);
+    msg = move_blob_to_received_message(RPC_CM_QUERY_PARTITION_CONFIG_BY_INDEX, std::move(b));
+
+    t_rpc rpc(msg);
+    ASSERT_EQ(rpc.request().app_name, "haha");
 }

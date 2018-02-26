@@ -104,6 +104,11 @@ public:
         return *(_i->thrift_request);
     }
 
+    TRequest *mutable_request() const {
+        dassert(_i, "rpc_holder is uninitialized");
+        return _i->thrift_request.get();
+    }
+
     TResponse &response() const
     {
         dassert(_i, "rpc_holder is uninitialized");

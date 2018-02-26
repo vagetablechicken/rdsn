@@ -28,13 +28,32 @@
 
 #include <dsn/utility/blob.h>
 #include <dsn/c/api_common.h>
+#include <dsn/tool/cli.h>
 
 namespace dsn {
 
 /// Move the content inside message `m` into a blob.
-extern dsn::blob move_dsn_message_t_to_blob(dsn_message_t m);
+extern blob move_dsn_message_t_to_blob(dsn_message_t m);
 
-/// Copy the data inside blob `b` into a message.
-extern dsn_message_t copy_blob_to_dsn_message_t(const dsn::blob &b, dsn_task_code_t tc);
+/// Move the data inside blob `b` into a message for reading(unmarshalling).
+/// This function is identical with dsn_msg_create_received_request,
+/// but the internal data used to create message will be moved
+/// rather than be simply referenced.
+/// MUST released mannually later using dsn_msg_release_ref.
+extern dsn_message_t move_blob_to_received_message(dsn_task_code_t rpc_code,
+                                                   blob &&bb,
+                                                   int thread_hash DEFAULT(0),
+                                                   uint64_t partition_hash DEFAULT(0));
+
+/// Convert a thrift request into a dsn message (using binary encoding).
+/// When to use this:
+///     1. Unit test: when we create a fake message as the function argument.
+template <typename T>
+inline dsn_message_t from_thrift_request_to_received_message(const T &request, dsn_task_code_t tc)
+{
+    dsn::binary_writer writer;
+    dsn::marshall_thrift_binary(writer, request);
+    return move_blob_to_received_message(tc, writer.get_buffer());
+}
 
 } // namespace dsn

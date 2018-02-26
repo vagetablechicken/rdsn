@@ -28,12 +28,13 @@
 #include <dsn/utility/binary_reader.h>
 #include <dsn/utility/message_utils.h>
 #include <dsn/cpp/auto_codes.h>
+#include <dsn/utility/binary_writer.h>
 
 // Header file: dsn/utility/message_utils.h
 
 namespace dsn {
 
-/*extern*/ dsn::blob move_dsn_message_t_to_blob(dsn_message_t m)
+/*extern*/ blob move_dsn_message_t_to_blob(dsn_message_t m)
 {
     void *ptr;
     size_t len;
@@ -44,17 +45,20 @@ namespace dsn {
     return dsn::blob((char *)ptr, 0, static_cast<unsigned int>(len));
 }
 
-/*extern*/ dsn_message_t copy_blob_to_dsn_message_t(const dsn::blob &b, dsn_task_code_t tc)
+/*extern*/ dsn_message_t move_blob_to_received_message(dsn_task_code_t rpc_code,
+                                                       blob &&bb,
+                                                       int thread_hash,
+                                                       uint64_t partition_hash)
 {
-    dsn_message_t msg = dsn_msg_create_request(tc);
+    auto msg = ::dsn::message_ex::create_receive_message_with_standalone_header(bb);
+    msg->local_rpc_code = rpc_code;
+    const char *name = dsn_task_code_to_string(rpc_code);
+    strncpy(msg->header->rpc_name, name, strlen(name));
 
-    void *ptr;
-    size_t sz;
-    dsn_msg_write_next(msg, &ptr, &sz, b.length());
-
-    memcpy(ptr, b.data(), b.length());
-    dsn_msg_write_commit(msg, b.length());
-
+    msg->header->client.thread_hash = thread_hash;
+    msg->header->client.partition_hash = partition_hash;
+    msg->header->context.u.serialize_format = DSF_THRIFT_BINARY;
+    msg->add_ref(); // released by callers explicitly using dsn_msg_release
     return msg;
 }
 
