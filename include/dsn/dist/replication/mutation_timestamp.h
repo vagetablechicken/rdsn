@@ -24,22 +24,23 @@
  * THE SOFTWARE.
  */
 
-#pragma once
+#include <dsn/c/api_layer1.h>
+#include <dsn/utility/synchronize.h>
 
-#include <fmt/format.h>
-#include <dsn/cpp/auto_codes.h>
-#include <dsn/cpp/errors.h>
+namespace dsn {
+namespace replication {
 
-namespace fmt {
-
-inline void format_arg(fmt::BasicFormatter<char> &f, const char *format_str, const dsn::gpid &p)
+/// Generates a unique timestamp.
+/// \see dsn::replication::replica::init_prepare
+inline uint64_t generate_timestamp()
 {
-    f.writer().write("{}.{}", p.get_app_id(), p.get_partition_index());
+    static uint64_t last = 0;
+    static ::dsn::utils::ex_lock_nr_spin _lock;
+    uint64_t time = dsn_now_ns() / 1000;
+    ::dsn::utils::auto_lock<::dsn::utils::ex_lock_nr_spin> l(_lock);
+    last = std::max(time, last + 1);
+    return last;
 }
 
-inline void format_arg(fmt::BasicFormatter<char> &f, const char *format_str, const dsn::error_s &p)
-{
-    f.writer().write(p.description());
-}
-
-} // namespace fmt
+} // namespace replication
+} // namespace dsn

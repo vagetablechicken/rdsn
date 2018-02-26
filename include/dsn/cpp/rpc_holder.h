@@ -81,7 +81,7 @@ public:
     }
 
     rpc_holder(std::unique_ptr<TRequest> req,
-               dsn_task_code_t code,
+               dsn::task_code code,
                std::chrono::milliseconds timeout_milliseconds = std::chrono::milliseconds(0),
                uint64_t partition_hash = 0)
         : _i(new internal(req, code, timeout_milliseconds, partition_hash))
@@ -104,7 +104,8 @@ public:
         return *(_i->thrift_request);
     }
 
-    TRequest *mutable_request() const {
+    TRequest *mutable_request() const
+    {
         dassert(_i, "rpc_holder is uninitialized");
         return _i->thrift_request.get();
     }
@@ -203,10 +204,10 @@ private:
         }
 
         internal(std::unique_ptr<TRequest> &req,
-                 dsn_task_code_t code,
+                 dsn::task_code code,
                  std::chrono::milliseconds timeout,
                  uint64_t partition_hash)
-            : thrift_request(std::move(req))
+            : thrift_request(std::move(req)), auto_reply(false)
         {
             dassert(thrift_request != nullptr, "req should not be null");
 

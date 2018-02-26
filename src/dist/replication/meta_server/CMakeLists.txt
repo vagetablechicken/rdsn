@@ -1,7 +1,9 @@
 set(MY_PROJ_NAME dsn_meta_server)
 
-set(DUPLICATION_SRC duplication/duplication_info.cpp
-        duplication/meta_duplication_service.cpp)
+set(DUPLICATION_SRC
+        duplication/duplication_info.cpp
+        duplication/meta_duplication_service.cpp
+        )
 
 # Source files under CURRENT project directory will be automatically included.
 # You can manually set MY_PROJ_SRC to include source files under other directories.

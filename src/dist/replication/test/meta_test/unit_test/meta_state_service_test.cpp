@@ -38,7 +38,7 @@ namespace dsn {
 class meta_state_service_test : public ::testing::Test
 {
 public:
-    meta_state_service_test(): _tracker(1) {}
+    meta_state_service_test() : _tracker(1) {}
 
     ~meta_state_service_test() override {}
 

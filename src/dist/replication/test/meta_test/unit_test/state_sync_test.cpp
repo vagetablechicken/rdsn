@@ -43,7 +43,6 @@ static void random_assign_partition_config(std::shared_ptr<app_state> &app,
     }
 }
 
-// TODO(wutao1): refactor
 static void file_data_compare(const char *fname1, const char *fname2)
 {
     static const int length = 4096;

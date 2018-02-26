@@ -69,13 +69,22 @@ ENUM_REG(TASK_PRIORITY_HIGH)
 ENUM_END(dsn_task_priority_t)
 
 namespace dsn {
-// task code is an index for a specific kind of task. with the index, you can
-// get properties of this kind of task: name, type, priority, etc. you may want to refer to
-// task_spec.h for the detailed task properties.
-//
-// for performance, task_code is represented as an integer in memory; and for compatibility,
-// task_code is serialized as it's string representation when transfered by network and stored in
-// disk.
+
+/// task code is an index for a specific kind of task. with the index, you can
+/// get properties of this kind of task: name, type, priority, etc. you may want to refer to
+/// task_spec.h for the detailed task properties.
+///
+/// Like dsn::blob, task_code is a special thrift primitive type that's defined
+/// by the rDSN framework. Internally as a C++ object, it's is represented as an integer,
+/// but in thrift representation it's serialized as a string.
+///
+/// It should be noted that a task_code may have different code number in two different
+/// clusters. So DO NOT use a integer as task_code.
+///
+///  **.thrift
+///    x: 1: i32  task_code;
+///    ✓: 1: dsn.task_code  task_code;
+///
 class task_code
 {
 public:

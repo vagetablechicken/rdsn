@@ -46,11 +46,6 @@
 
 #include "duplication/replica_stub_duplication.h"
 
-#ifdef __TITLE__
-#undef __TITLE__
-#endif
-#define __TITLE__ "replica.stub"
-
 namespace dsn {
 namespace replication {
 
@@ -633,8 +628,7 @@ dsn::error_code replica_stub::on_kill_replica(gpid pid)
                 r->inject_error(ERR_INJECTED);
         }
         return ERR_OK;
-    }
-    else {
+    } else {
         error_code err = ERR_INVALID_PARAMETERS;
         replica_ptr r = get_replica(pid);
         if (r == nullptr) {
@@ -1571,7 +1565,7 @@ void replica_stub::on_disk_stat()
     int error_replica_dir_count = 0;
     int garbage_replica_dir_count = 0;
     for (auto &fpath : sub_list) {
-        auto &&name = dsn::utils::filesystem::get_file_name(fpath);
+        auto name = dsn::utils::filesystem::get_file_name(fpath);
         // don't delete ".bak" directory because it is backed by administrator.
         if (name.length() >= 4 && (name.substr(name.length() - 4) == ".err" ||
                                    name.substr(name.length() - 4) == ".gar")) {
@@ -1604,15 +1598,20 @@ void replica_stub::on_disk_stat()
                           dsn_now_ms() - current_time_ms);
                     _counter_replicas_recent_replica_remove_dir_count->increment();
                 }
+            } else {
+                ddebug("gc_disk: reserve directory '%s', wait_seconds = %" PRIu64,
+                       ", time_used_ms = %" PRIu64,
+                       fpath.c_str(),
+                       dsn_now_ms() - current_time_ms);
             }
         }
+        _counter_replicas_error_replica_dir_count->set(error_replica_dir_count);
+        _counter_replicas_garbage_replica_dir_count->set(garbage_replica_dir_count);
+
+        _fs_manager.update_disk_stat();
+
+        ddebug("finish to update disk stat, time_used_ns = %" PRIu64, dsn_now_ns() - start);
     }
-    _counter_replicas_error_replica_dir_count->set(error_replica_dir_count);
-    _counter_replicas_garbage_replica_dir_count->set(garbage_replica_dir_count);
-
-    _fs_manager.update_disk_stat();
-
-    ddebug("finish to update disk stat, time_used_ns = %" PRIu64, dsn_now_ns() - start);
 }
 
 ::dsn::task_ptr replica_stub::begin_open_replica(const app_info &app,
@@ -1623,12 +1622,20 @@ void replica_stub::on_disk_stat()
     _replicas_lock.lock();
     if (_replicas.find(gpid) != _replicas.end()) {
         _replicas_lock.unlock();
+        ddebug("open replica '%s.%d.%d' failed coz replica is already opened",
+               app.app_type.c_str(),
+               gpid.get_app_id(),
+               gpid.get_partition_index());
         return nullptr;
     }
 
     auto it = _opening_replicas.find(gpid);
     if (it != _opening_replicas.end()) {
         _replicas_lock.unlock();
+        ddebug("open replica '%s.%d.%d' failed coz replica is under opening",
+               app.app_type.c_str(),
+               gpid.get_app_id(),
+               gpid.get_partition_index());
         return nullptr;
     } else {
         auto it2 = _closing_replicas.find(gpid);
@@ -1644,21 +1651,23 @@ void replica_stub::on_disk_stat()
                 // unlock here to avoid dead lock
                 _replicas_lock.unlock();
 
-                ddebug("open replica which is to be closed '%s.%d.%d'",
+                ddebug("open replica '%s.%d.%d' which is to be closed",
                        app.app_type.c_str(),
                        gpid.get_app_id(),
                        gpid.get_partition_index());
 
+                // open by add learner
                 if (req != nullptr) {
                     on_add_learner(*req);
                 }
+
                 return nullptr;
             } else {
                 _replicas_lock.unlock();
-                dwarn("open replica '%s.%d.%d' failed coz replica is under closing",
-                      app.app_type.c_str(),
-                      gpid.get_app_id(),
-                      gpid.get_partition_index());
+                ddebug("open replica '%s.%d.%d' failed coz replica is under closing",
+                       app.app_type.c_str(),
+                       gpid.get_app_id(),
+                       gpid.get_partition_index());
                 return nullptr;
             }
         } else {
@@ -1684,8 +1693,10 @@ void replica_stub::open_replica(const app_info &app,
     std::string dir = get_replica_dir(app.app_type.c_str(), gpid, false);
     replica_ptr rep = nullptr;
     if (!dir.empty()) {
-        // NOTICE: if partition is DDD, and meta select one replica as primary, it will execute the
-        // load-process because of a.b.pegasus is exist, so it will never execute the restore
+        // NOTICE: if partition is DDD, and meta select one replica as primary, it will
+        // execute the
+        // load-process because of a.b.pegasus is exist, so it will never execute the
+        // restore
         // process below
         ddebug("%d.%d@%s: start to load replica %s group check, dir = %s",
                gpid.get_app_id(),
@@ -1697,9 +1708,11 @@ void replica_stub::open_replica(const app_info &app,
     }
 
     if (rep == nullptr) {
-        // NOTICE: only new_replica_group's assign_primary will execute this; if server restart when
+        // NOTICE: only new_replica_group's assign_primary will execute this; if server
+        // restart when
         // download restore-data from cold backup media, the a.b.pegasus will move to
-        // a.b.pegasus.timestamp.err when replica-server load all the replicas, so restore-flow will
+        // a.b.pegasus.timestamp.err when replica-server load all the replicas, so
+        // restore-flow will
         // do it again
 
         bool restore_if_necessary =
@@ -1707,12 +1720,13 @@ void replica_stub::open_replica(const app_info &app,
              (app.envs.find(cold_backup_constant::POLICY_NAME) != app.envs.end()));
 
         // NOTICE: when we don't need execute restore-process, we should remove a.b.pegasus
-        // directory because it don't contain the valid data dir and also we need create a new
+        // directory because it don't contain the valid data dir and also we need create a
+        // new
         // replica(if contain valid data, it will execute load-process)
 
         if (!restore_if_necessary && ::dsn::utils::filesystem::directory_exists(dir)) {
             if (!::dsn::utils::filesystem::remove_path(dir)) {
-                dassert(false, "remove use directory(%s) failed", dir.c_str());
+                dassert(false, "remove useless directory(%s) failed", dir.c_str());
                 return;
             }
         }
@@ -1720,6 +1734,10 @@ void replica_stub::open_replica(const app_info &app,
     }
 
     if (rep == nullptr) {
+        ddebug("%d.%d@%s: open replica failed, erase from opening replicas",
+               gpid.get_app_id(),
+               gpid.get_partition_index(),
+               _primary_address.to_string());
         _counter_replicas_opening_count->decrement();
         zauto_lock l(_replicas_lock);
         _opening_replicas.erase(gpid);
@@ -1872,16 +1890,13 @@ void replica_stub::open_service()
             if (args.size() == 0) {
                 pid.set_app_id(-1);
                 pid.set_partition_index(-1);
-            }
-            else if (args.size() == 1) {
+            } else if (args.size() == 1) {
                 pid.set_app_id(atoi(args[0].c_str()));
                 pid.set_partition_index(-1);
-            }
-            else if (args.size() == 2) {
+            } else if (args.size() == 2) {
                 pid.set_app_id(atoi(args[0].c_str()));
                 pid.set_partition_index(atoi(args[1].c_str()));
-            }
-            else {
+            } else {
                 return std::string(ERR_INVALID_PARAMETERS.to_string());
             }
             dsn::error_code e = this->on_kill_replica(pid);
@@ -1897,7 +1912,8 @@ void replica_stub::open_service()
     _verbose_client_log_command = ::dsn::command_manager::instance().register_app_command(
         {"verbose-client-log"},
         "verbose-client-log <true|false>",
-        "verbose-client-log - control if print verbose error log when reply read & write request",
+        "verbose-client-log - control if print verbose error log when reply read & write "
+        "request",
         [this](const std::vector<std::string> &args) {
             HANDLE_CLI_FLAGS(_verbose_client_log, args);
         });

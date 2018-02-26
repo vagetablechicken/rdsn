@@ -32,9 +32,27 @@
 namespace dsn {
 namespace replication {
 
-/// \brief Each of the mutation is a tuple made up of <timestamp, dsn_message_t>.
-/// dsn_message_t is the write request serialized by upper-level application.
-typedef std::tuple<uint64_t, dsn_message_t> mutation_tuple;
+/// \brief Each of the mutation is a tuple made up of
+/// <timestamp, dsn_message_t, dsn::blob>.
+/// dsn_message_t is the write request represented as the mutation
+/// and dsn::blob is the content read from the message.
+typedef std::tuple<uint64_t, dsn_message_t, dsn::blob> mutation_tuple;
+
+struct mutation_tuple_cmp
+{
+    inline bool operator()(const mutation_tuple &lhs, const mutation_tuple &rhs)
+    {
+        // different mutations is probable to be batched together
+        // and sharing the same timestamp, so here we also compare
+        // the message pointer.
+        if (std::get<0>(lhs) == std::get<0>(rhs)) {
+            return std::get<1>(lhs) < std::get<1>(rhs);
+        }
+        return std::get<0>(lhs) < std::get<0>(rhs);
+    }
+};
+
+typedef std::set<mutation_tuple, mutation_tuple_cmp> mutation_tuple_set;
 
 /// \brief This is an interface for handling the mutation logs intended to
 /// be duplicated to remote cluster.
@@ -75,9 +93,8 @@ public:
     /// Thread-safe
     static void init_singleton(duplication_backlog_handler_factory *group)
     {
-        dassert(!_inited, "duplication_backlog_handler_group has been initialized.");
-
         std::lock_guard<std::mutex> _(_lock);
+        dassert(!_inited, "duplication_backlog_handler_group has been initialized.");
         _instance.reset(group);
         _inited = true;
     }

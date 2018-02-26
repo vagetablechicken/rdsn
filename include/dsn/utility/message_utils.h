@@ -33,14 +33,18 @@
 namespace dsn {
 
 /// Move the content inside message `m` into a blob.
-extern blob move_dsn_message_t_to_blob(dsn_message_t m);
+inline blob move_message_to_blob(dsn_message_t m)
+{
+    rpc_read_stream reader(m);
+    return reader.get_buffer();
+}
 
 /// Move the data inside blob `b` into a message for reading(unmarshalling).
 /// This function is identical with dsn_msg_create_received_request,
 /// but the internal data used to create message will be moved
 /// rather than be simply referenced.
-/// MUST released mannually later using dsn_msg_release_ref.
-extern dsn_message_t move_blob_to_received_message(dsn_task_code_t rpc_code,
+/// MUST released manually later using dsn_msg_release_ref.
+extern dsn_message_t move_blob_to_received_message(task_code rpc_code,
                                                    blob &&bb,
                                                    int thread_hash DEFAULT(0),
                                                    uint64_t partition_hash DEFAULT(0));
@@ -49,11 +53,19 @@ extern dsn_message_t move_blob_to_received_message(dsn_task_code_t rpc_code,
 /// When to use this:
 ///     1. Unit test: when we create a fake message as the function argument.
 template <typename T>
-inline dsn_message_t from_thrift_request_to_received_message(const T &request, dsn_task_code_t tc)
+inline dsn_message_t from_thrift_request_to_received_message(const T &request, task_code tc)
 {
-    dsn::binary_writer writer;
-    dsn::marshall_thrift_binary(writer, request);
+    binary_writer writer;
+    marshall_thrift_binary(writer, request);
     return move_blob_to_received_message(tc, writer.get_buffer());
+}
+
+/// Convert a blob into a thrift object.
+template <typename T>
+inline void from_blob_to_thrift(const dsn::blob &data, T &thrift_obj)
+{
+    binary_reader reader(data);
+    unmarshall_thrift_binary(reader, thrift_obj);
 }
 
 } // namespace dsn

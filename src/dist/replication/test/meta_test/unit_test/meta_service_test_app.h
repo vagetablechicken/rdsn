@@ -137,8 +137,8 @@ private:
 
 template <typename TRequest, typename RequestHandler>
 std::shared_ptr<reply_context>
-fake_rpc_call(dsn_task_code_t rpc_code,
-              dsn_task_code_t lpc_code,
+fake_rpc_call(dsn::task_code rpc_code,
+              dsn::task_code lpc_code,
               RequestHandler *handle_class,
               void (RequestHandler::*handle)(dsn_message_t request),
               const TRequest &data,

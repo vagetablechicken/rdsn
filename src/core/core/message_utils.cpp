@@ -27,32 +27,19 @@
 #include <dsn/c/api_layer1.h>
 #include <dsn/utility/binary_reader.h>
 #include <dsn/utility/message_utils.h>
-#include <dsn/cpp/auto_codes.h>
-#include <dsn/utility/binary_writer.h>
 
 // Header file: dsn/utility/message_utils.h
 
 namespace dsn {
 
-/*extern*/ blob move_dsn_message_t_to_blob(dsn_message_t m)
-{
-    void *ptr;
-    size_t len;
-
-    dsn_msg_read_next(m, &ptr, &len);
-    dsn_msg_read_commit(m, len);
-
-    return dsn::blob((char *)ptr, 0, static_cast<unsigned int>(len));
-}
-
-/*extern*/ dsn_message_t move_blob_to_received_message(dsn_task_code_t rpc_code,
+/*extern*/ dsn_message_t move_blob_to_received_message(dsn::task_code rpc_code,
                                                        blob &&bb,
                                                        int thread_hash,
                                                        uint64_t partition_hash)
 {
     auto msg = ::dsn::message_ex::create_receive_message_with_standalone_header(bb);
     msg->local_rpc_code = rpc_code;
-    const char *name = dsn_task_code_to_string(rpc_code);
+    const char *name = rpc_code.to_string();
     strncpy(msg->header->rpc_name, name, strlen(name));
 
     msg->header->client.thread_hash = thread_hash;

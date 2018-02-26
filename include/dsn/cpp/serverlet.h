@@ -124,7 +124,7 @@ protected:
                               dsn_gpid gpid = dsn_gpid{0});
 
     template <typename TRpcHolder>
-    bool register_rpc_handler_with_rpc_holder(dsn_task_code_t rpc_code,
+    bool register_rpc_handler_with_rpc_holder(dsn::task_code rpc_code,
                                               const char *rpc_description,
                                               void (T::*handler)(TRpcHolder),
                                               dsn_gpid gpid = dsn_gpid{0});
@@ -224,7 +224,7 @@ inline bool serverlet<T>::register_rpc_handler(dsn::task_code rpc_code,
 
 template <typename T>
 template <typename TRpcHolder>
-inline bool serverlet<T>::register_rpc_handler_with_rpc_holder(dsn_task_code_t rpc_code,
+inline bool serverlet<T>::register_rpc_handler_with_rpc_holder(dsn::task_code rpc_code,
                                                                const char *rpc_description,
                                                                void (T::*handler)(TRpcHolder),
                                                                dsn_gpid gpid)

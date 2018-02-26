@@ -100,6 +100,8 @@ replication_options::replication_options()
     learn_app_max_concurrent_count = 1;
 
     max_concurrent_uploading_file_count = 10;
+
+    duplication_sync_interval_ms = 5000;
 }
 
 replication_options::~replication_options() {}
@@ -466,6 +468,13 @@ void replication_options::initialize()
                                              "max_concurrent_uploading_file_count",
                                              max_concurrent_uploading_file_count,
                                              "concurrent uploading file count");
+
+    duplication_sync_interval_ms =
+        dsn_config_get_value_uint64("replication",
+                                    "duplication_sync_interval_ms",
+                                    duplication_sync_interval_ms,
+                                    "The period of time (in ms) that the replica stub sends "
+                                    "duplication_sync rpc to meta server.");
 
     replica_helper::load_meta_servers(meta_servers);
 

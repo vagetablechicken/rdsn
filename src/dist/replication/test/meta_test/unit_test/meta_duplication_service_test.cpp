@@ -116,10 +116,10 @@ public:
                                 derror_f("delete node(/{}): {}", child, ec.to_string());
                             }
                         },
-                            dup_svc().tracker());
+                        dup_svc().tracker());
                 }
             },
-                dup_svc().tracker());
+            dup_svc().tracker());
         dup_svc().wait_all();
     }
 

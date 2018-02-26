@@ -72,6 +72,7 @@ struct mutation_duplicator_test : public duplication_test_base
         mu->data.header.pid = replica->get_gpid();
         mu->data.header.last_committed_decree = decree - 1;
         mu->data.header.log_offset = 0;
+        mu->data.header.timestamp = decree;
 
         binary_writer writer;
         writer.write(data);

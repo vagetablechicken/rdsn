@@ -27,22 +27,17 @@
 #pragma once
 
 #include <dsn/cpp/clientlet.h>
-#include <dsn/dist/replication/fmt_logging.h>
 #include <dsn/dist/replication/replication_types.h>
 #include <dsn/dist/replication/replication_app_base.h>
 #include <dsn/dist/replication/duplication_common.h>
+#include <dsn/dist/replication/fmt_utils.h>
+#include <dsn/utility/message_utils.h>
 
 #include "dist/replication/lib/replica.h"
 #include "dist/replication/lib/prepare_list.h"
 #include "dist/replication/lib/replica.h"
 #include "dist/replication/lib/mutation_log.h"
 #include "dist/replication/lib/mutation_log_utils.h"
-#include "dist/replication/lib/duplication/fmt_utils.h"
-
-#ifdef __TITLE__
-#undef __TITLE__
-#endif
-#define __TITLE__ "mutation_duplicator"
 
 namespace dsn {
 namespace replication {
@@ -123,7 +118,9 @@ class mutation_duplicator
                             (dsn_msg_serialize_format)update.serialization_type,
                             (void *)update.data.data(),
                             update.data.length());
-                        _mutations.emplace(std::make_tuple(mu->data.header.timestamp, req));
+                        dsn::blob b = move_message_to_blob(req);
+                        _mutations.emplace(
+                            std::make_tuple(mu->data.header.timestamp, req, std::move(b)));
                     }
 
                     // update last_decree
@@ -141,7 +138,7 @@ class mutation_duplicator
         }
 
         // After calling this function this `batch` is guaranteed to be empty.
-        std::set<mutation_tuple> move_to_mutation_tuples() { return std::move(_mutations); }
+        mutation_tuple_set move_to_mutation_tuples() { return std::move(_mutations); }
 
         decree last_decree() const { return _last_decree; }
 
@@ -150,7 +147,7 @@ class mutation_duplicator
         friend class mutation_duplicator_test;
 
         prepare_list _mutation_buffer;
-        std::set<mutation_tuple> _mutations;
+        mutation_tuple_set _mutations;
         decree _last_decree;
         mutation_duplicator *_duplicator;
     };
@@ -364,6 +361,7 @@ public:
         return result;
     }
 
+    // REQUIRES: no other tasks mutating _view.
     bool have_more() const { return _private_log->max_commit_on_disk() > _view->last_decree; }
 
     // RETURNS: false if the operation encountered error.
@@ -413,19 +411,32 @@ public:
         }
 
         dassert(!_pending_mutations.empty(), "");
-        ddebug_f("start shipping mutations [size: {}]", _pending_mutations.size());
+        ddebug_f("[gpid: {}] start shipping mutations [size: {}]",
+                 _replica->get_gpid(),
+                 _pending_mutations.size());
 
-        std::set<mutation_tuple> pending_mutations;
+        mutation_tuple_set pending_mutations;
         {
             ::dsn::service::zauto_lock _(_pending_lock);
             pending_mutations = _pending_mutations; // copy to prevent interleaving
         }
-        for (mutation_tuple mut : pending_mutations) {
+        for (const mutation_tuple &mut : pending_mutations) {
             loop_to_duplicate(mut);
         }
     }
 
-    void loop_to_duplicate(mutation_tuple mut)
+    void
+    enqueue_loop_to_duplicate(const mutation_tuple &mut,
+                              std::chrono::milliseconds delay_ms = std::chrono::milliseconds(0))
+    {
+        tasking::enqueue(LPC_DUPLICATE_MUTATIONS,
+                         tracker(),
+                         [mut, this]() { mutation_duplicator::loop_to_duplicate(mut); },
+                         gpid_to_thread_hash(_replica->get_gpid()),
+                         delay_ms);
+    }
+
+    void loop_to_duplicate(const mutation_tuple &mut)
     {
         if (_paused) {
             return;
@@ -433,7 +444,7 @@ public:
 
         _backlog_handler->duplicate(mut, [this, mut](error_s err) {
             if (!err.is_ok()) {
-                derror_f("failed to ship mutation [gpid: {}]: {}, timestamp: {}",
+                derror_f("[gpid: {}] failed to ship mutation: {}, timestamp: {}",
                          _replica->get_gpid(),
                          err,
                          std::get<0>(mut));
@@ -454,7 +465,9 @@ public:
                     enqueue_do_duplication(std::chrono::milliseconds(1000));
                 }
             } else {
-                loop_to_duplicate(mut);
+                // retry infinitely whenever error occurs.
+                // delay 1 sec for retry.
+                enqueue_loop_to_duplicate(mut, std::chrono::milliseconds(1000));
             }
         });
     }
@@ -473,7 +486,7 @@ private:
     std::unique_ptr<mutation_batch> _mutation_batch;
     std::unique_ptr<duplication_backlog_handler> _backlog_handler;
 
-    std::set<mutation_tuple> _pending_mutations;
+    mutation_tuple_set _pending_mutations;
     mutable ::dsn::service::zlock _pending_lock;
 
     int64_t _current_end_offset;

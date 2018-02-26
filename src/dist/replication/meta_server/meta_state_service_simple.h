@@ -75,7 +75,6 @@ public:
     //  - ERR_OBJECT_NOT_FOUND: parent node is not created yet.
     //  - ERR_NODE_ALREADY_EXIST: node's been created.
     //  - ERR_INVALID_PARAMETERS: node is not in valid format.
-    //  -
     virtual task_ptr create_node(const std::string &node,
                                  task_code cb_code,
                                  const err_callback &cb_create,
@@ -101,7 +100,6 @@ public:
     // Possible errors:
     //  - ERR_OBJECT_NOT_FOUND: node is not found.
     //  - ERR_INVALID_PARAMETERS: node is not in valid format.
-    //  -
     virtual task_ptr set_data(const std::string &node,
                               const blob &value,
                               task_code cb_code,
@@ -251,7 +249,6 @@ private:
     using set_data_log = log_struct<operation_type::set_data, std::string, blob>;
 
     // Return an empty string if `s` is invalid(the leading character must be '\') or emtpy.
-    //
     static std::string normalize_path(const std::string &s);
 
     static error_code extract_name_parent_from_path(const std::string &s,

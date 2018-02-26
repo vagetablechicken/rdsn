@@ -59,7 +59,6 @@ std::vector<dsn::replication::mutation_ptr> generate_mutations(int count, dsn::g
     return ret;
 }
 
-// TODO(wutao1): ASSERT_MUTATION_EQUAL
 void compare_mutation(dsn::replication::mutation_ptr left, dsn::replication::mutation_ptr right)
 {
     ASSERT_EQ((left)->get_ballot(), (right)->get_ballot());

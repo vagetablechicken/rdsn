@@ -49,11 +49,6 @@
 #include "server_load_balancer.h"
 #include "dist/replication/meta_server/duplication/meta_duplication_service.h"
 
-#ifdef __TITLE__
-#undef __TITLE__
-#endif
-#define __TITLE__ "meta.service"
-
 namespace dsn {
 namespace replication {
 
@@ -779,6 +774,5 @@ void meta_service::initialize_duplication_service()
 {
     _dup_svc = dsn::make_unique<meta_duplication_service>(_state.get(), this);
 }
-
 }
 }

@@ -31,10 +31,7 @@ namespace replication {
 
 struct replica_duplication_test : public duplication_test_base
 {
-    void SetUp() override
-    {
-        stub = dsn::make_unique<mock_replica_stub>();
-    }
+    void SetUp() override { stub = dsn::make_unique<mock_replica_stub>(); }
 
     void TearDown() override { stub.reset(); }
 

@@ -24,45 +24,32 @@
  * THE SOFTWARE.
  */
 
-#include <gtest/gtest.h>
-#include <dsn/cpp/json_helper.h>
+#pragma once
 
-namespace dsn {
+#include <dsn/cpp/auto_codes.h>
+#include <dsn/cpp/errors.h>
+#include <dsn/dist/replication/fmt_logging.h>
 
-class test_entity
+/// This file contains customized formatter for rDSN basic types, so that
+/// users can easily call fmt::format("{}", xxx) on them, without the effort
+/// of convert theses types into string.
+
+namespace fmt {
+
+inline void format_arg(fmt::BasicFormatter<char> &f, const char *format_str, const dsn::gpid &p)
 {
-public:
-    int field = 1;
-    const int const_field = 2;
-
-private:
-    int private_field = 3;
-    const int private_const_field = 4;
-
-public:
-    DEFINE_JSON_SERIALIZATION(field, const_field, private_field, private_const_field);
-
-    bool operator==(const test_entity &rhs) const
-    {
-        return field == rhs.field && const_field == rhs.const_field &&
-               private_field == rhs.private_field && private_const_field == rhs.private_const_field;
-    }
-};
-
-// This test verifies that json_forwarder can correctly encode an object with private
-// and const fields.
-TEST(json_helper, encode_and_decode)
-{
-    test_entity entity;
-    entity.field =
-        5; // ensures that `entity` doesn't equal to the default value of `decoded_entity`
-
-    blob encoded_entity = dsn::json::json_forwarder<test_entity>::encode(entity);
-
-    test_entity decoded_entity;
-    dsn::json::json_forwarder<test_entity>::decode(encoded_entity, decoded_entity);
-
-    ASSERT_EQ(entity, decoded_entity);
+    f.writer().write("{}.{}", p.get_app_id(), p.get_partition_index());
 }
 
-} // namespace dsn
+inline void format_arg(fmt::BasicFormatter<char> &f, const char *format_str, const dsn::error_s &p)
+{
+    f.writer().write(p.description());
+}
+
+inline void
+format_arg(fmt::BasicFormatter<char> &f, const char *format_str, const dsn::task_code &p)
+{
+    f.writer().write(p.to_string());
+}
+
+} // namespace fmt

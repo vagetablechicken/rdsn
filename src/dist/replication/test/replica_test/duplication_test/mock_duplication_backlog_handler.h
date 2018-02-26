@@ -35,7 +35,7 @@ namespace replication {
 inline std::string dsn_message_t_to_string(dsn_message_t req)
 {
     req = dsn_msg_copy(req, true, false);
-    blob bb = dsn::move_dsn_message_t_to_blob(req);
+    blob bb = dsn::move_message_to_blob(req);
 
     binary_reader reader(bb);
     std::string data;

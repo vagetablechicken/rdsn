@@ -42,11 +42,6 @@
 
 #include "duplication/replica_duplication.h"
 
-#ifdef __TITLE__
-#undef __TITLE__
-#endif
-#define __TITLE__ "replica"
-
 namespace dsn {
 namespace replication {
 

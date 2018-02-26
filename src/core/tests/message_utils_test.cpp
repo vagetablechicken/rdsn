@@ -46,7 +46,7 @@ TEST(message_utils, msg_blob_convertion)
     dsn_message_t m = move_blob_to_received_message(RPC_CODE_FOR_TEST, std::move(b));
 
     ASSERT_EQ(dsn_msg_body_size(m), data.size());
-    ASSERT_EQ(b.to_string(), move_dsn_message_t_to_blob(m).to_string());
+    ASSERT_EQ(b.to_string(), move_message_to_blob(m).to_string());
 }
 
 TEST(message_utils, thrift_msg_convertion)
@@ -68,7 +68,7 @@ TEST(message_utils, complex_convertion)
 
     dsn_message_t msg =
         from_thrift_request_to_received_message(request, RPC_CM_QUERY_PARTITION_CONFIG_BY_INDEX);
-    blob b = move_dsn_message_t_to_blob(msg);
+    blob b = move_message_to_blob(msg);
     msg = move_blob_to_received_message(RPC_CM_QUERY_PARTITION_CONFIG_BY_INDEX, std::move(b));
 
     t_rpc rpc(msg);

@@ -31,21 +31,19 @@
  * Revision history:
  *     2015-12-30, xiaotz, first version
  */
-#include <boost/lexical_cast.hpp>
 #include <dsn/utility/error_code.h>
 #include <dsn/dist/replication/replication_ddl_client.h>
 #include <dsn/dist/replication/replication_other_types.h>
-#include <iostream>
-#include <fstream>
-#include <iomanip>
+#include <dsn/dist/replication/duplication_common.h>
 
 #include <boost/lexical_cast.hpp>
 #include <fmt/format.h>
-
+#include <iostream>
+#include <fstream>
+#include <iomanip>
 #include <sys/socket.h>
 #include <netdb.h>
 #include <arpa/inet.h>
-#include <dsn/dist/replication/duplication_common.h>
 
 namespace dsn {
 namespace replication {
