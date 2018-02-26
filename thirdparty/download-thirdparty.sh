@@ -110,4 +110,8 @@ fi
 check_and_download "fmt-4.0.0.tar.gz" "https://codeload.github.com/fmtlib/fmt/tar.gz/4.0.0"
 exit_if_fail $?
 
+# gflags
+check_and_download "gflags-2.2.1.tar.gz" "https://github.com/gflags/gflags/archive/v2.2.1.tar.gz"
+exit_if_fail $?
+
 cd $TP_DIR
