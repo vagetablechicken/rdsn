@@ -181,8 +181,7 @@ if [ ! -d $TP_OUTPUT/include/gflags ]; then
     mkdir -p build && cd build
     rm -rf CMakeCache.txt CMakeFiles/
 	cmake .. \
-	  -DCMAKE_INSTALL_PREFIX=$TP_OUTPUT -DFMT_TEST=false
-      -DCMAKE_BUILD_TYPE=Release \
+	  -DCMAKE_INSTALL_PREFIX=$TP_OUTPUT
       -DCMAKE_POSITION_INDEPENDENT_CODE=On \
       -DCMAKE_INSTALL_PREFIX=$TP_OUTPUT\
       -DBUILD_SHARED_LIBS=On \
