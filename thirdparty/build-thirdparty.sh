@@ -180,8 +180,7 @@ if [ ! -d $TP_OUTPUT/include/gflags ]; then
     cd $TP_SRC/gflags-2.2.1
     mkdir -p build && cd build
     rm -rf CMakeCache.txt CMakeFiles/
-	cmake .. \
-	  -DCMAKE_INSTALL_PREFIX=$TP_OUTPUT
+    cmake .. \
       -DCMAKE_POSITION_INDEPENDENT_CODE=On \
       -DCMAKE_INSTALL_PREFIX=$TP_OUTPUT\
       -DBUILD_SHARED_LIBS=On \
