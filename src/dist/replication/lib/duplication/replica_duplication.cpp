@@ -80,7 +80,7 @@ void replica::duplication_impl::update_duplication_status(dupid_t dupid,
     mutation_duplicator *dup = _duplications[dupid].get();
 
     if (next_status == duplication_status::DS_START) {
-        dup->start_duplication();
+        dup->start();
     } else if (next_status == duplication_status::DS_PAUSE) {
         dup->pause();
     } else {

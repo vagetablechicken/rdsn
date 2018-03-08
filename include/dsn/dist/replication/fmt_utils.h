@@ -27,12 +27,12 @@
 #pragma once
 
 #include <dsn/cpp/auto_codes.h>
-#include <dsn/cpp/errors.h>
+#include <dsn/utility/errors.h>
 #include <dsn/dist/replication/fmt_logging.h>
 
 /// This file contains customized formatter for rDSN basic types, so that
 /// users can easily call fmt::format("{}", xxx) on them, without the effort
-/// of convert theses types into string.
+/// of converting theses types into string.
 
 namespace fmt {
 

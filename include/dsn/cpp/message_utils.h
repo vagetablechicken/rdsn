@@ -29,6 +29,7 @@
 #include <dsn/utility/blob.h>
 #include <dsn/c/api_common.h>
 #include <dsn/tool/cli.h>
+#include <dsn/utility/string_view.h>
 
 namespace dsn {
 
@@ -39,15 +40,26 @@ inline blob move_message_to_blob(dsn_message_t m)
     return reader.get_buffer();
 }
 
-/// Move the data inside blob `b` into a message for reading(unmarshalling).
+/// Convert a blob into a message for reading(unmarshalling).
 /// This function is identical with dsn_msg_create_received_request,
-/// but the internal data used to create message will be moved
-/// rather than be simply referenced.
+/// however it passes a blob to ensure ownership safety instead of
+/// passing simply a constant view.
 /// MUST released manually later using dsn_msg_release_ref.
-extern dsn_message_t move_blob_to_received_message(task_code rpc_code,
-                                                   blob &&bb,
-                                                   int thread_hash DEFAULT(0),
-                                                   uint64_t partition_hash DEFAULT(0));
+extern dsn_message_t
+from_blob_to_received_msg(task_code rpc_code,
+                          const blob &bb,
+                          int thread_hash = 0,
+                          uint64_t partition_hash = 0,
+                          dsn_msg_serialize_format serialization_type = DSF_THRIFT_BINARY);
+inline dsn_message_t
+from_blob_to_received_msg(task_code rpc_code,
+                          blob &&bb,
+                          int thread_hash = 0,
+                          uint64_t partition_hash = 0,
+                          dsn_msg_serialize_format serialization_type = DSF_THRIFT_BINARY)
+{
+    return from_blob_to_received_msg(rpc_code, bb, thread_hash, partition_hash, serialization_type);
+}
 
 /// Convert a thrift request into a dsn message (using binary encoding).
 /// When to use this:
@@ -57,7 +69,7 @@ inline dsn_message_t from_thrift_request_to_received_message(const T &request, t
 {
     binary_writer writer;
     marshall_thrift_binary(writer, request);
-    return move_blob_to_received_message(tc, writer.get_buffer());
+    return from_blob_to_received_msg(tc, writer.get_buffer());
 }
 
 /// Convert a blob into a thrift object.

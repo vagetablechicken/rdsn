@@ -35,7 +35,7 @@
 
 #pragma once
 
-#include <dsn/cpp/errors.h>
+#include <dsn/utility/errors.h>
 
 #include "dist/replication/client_lib/replication_common.h"
 #include "dist/replication/lib/mutation.h"
@@ -207,10 +207,17 @@ public:
     // SEE:
     // - mutation_log::replay(log_file_ptr, replay_callback, int64_t &)
     //
-    static error_s replay_block(log_file_ptr log,
-                                replay_callback callback,
+    static error_s replay_block(log_file_ptr &log,
+                                replay_callback &callback,
                                 bool read_from_start,
                                 /*out*/ int64_t &end_offset);
+    static error_s replay_block(log_file_ptr &log,
+                                replay_callback &&callback,
+                                bool read_from_start,
+                                /*out*/ int64_t &end_offset)
+    {
+        return replay_block(log, callback, read_from_start, end_offset);
+    }
 
     //
     // maintain max_decree & valid_start_offset

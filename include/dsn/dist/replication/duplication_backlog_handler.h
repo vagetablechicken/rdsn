@@ -26,7 +26,7 @@
 
 #pragma once
 
-#include <dsn/cpp/errors.h>
+#include <dsn/utility/errors.h>
 #include <dsn/dist/replication/replication_types.h>
 
 namespace dsn {

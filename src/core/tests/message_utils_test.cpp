@@ -25,7 +25,7 @@
  */
 
 #include <dsn/tool-api/rpc_message.h>
-#include <dsn/utility/message_utils.h>
+#include <dsn/cpp/message_utils.h>
 #include <dsn/dist/replication/replication.codes.h>
 #include <dsn/cpp/serialization_helper/dsn.layer2_types.h>
 #include <dsn/cpp/rpc_holder.h>
@@ -43,7 +43,7 @@ TEST(message_utils, msg_blob_convertion)
     std::string data = "hello";
 
     blob b(data.c_str(), 0, data.size());
-    dsn_message_t m = move_blob_to_received_message(RPC_CODE_FOR_TEST, std::move(b));
+    dsn_message_t m = from_blob_to_received_msg(RPC_CODE_FOR_TEST, std::move(b));
 
     ASSERT_EQ(dsn_msg_body_size(m), data.size());
     ASSERT_EQ(b.to_string(), move_message_to_blob(m).to_string());
@@ -69,7 +69,7 @@ TEST(message_utils, complex_convertion)
     dsn_message_t msg =
         from_thrift_request_to_received_message(request, RPC_CM_QUERY_PARTITION_CONFIG_BY_INDEX);
     blob b = move_message_to_blob(msg);
-    msg = move_blob_to_received_message(RPC_CM_QUERY_PARTITION_CONFIG_BY_INDEX, std::move(b));
+    msg = from_blob_to_received_msg(RPC_CM_QUERY_PARTITION_CONFIG_BY_INDEX, std::move(b));
 
     t_rpc rpc(msg);
     ASSERT_EQ(rpc.request().app_name, "haha");

@@ -92,21 +92,21 @@ public:
               dsn_task_type_t tt,
               dsn_task_priority_t pri,
               dsn::threadpool_code pool);
-    task_code() { _internal_code = 0; }
-    task_code(const task_code &r) { _internal_code = r._internal_code; }
-    explicit task_code(int code) { _internal_code = code; }
+
+    constexpr task_code() : _internal_code(0) {}
+
+    constexpr explicit task_code(int code) : _internal_code(code) {}
 
     const char *to_string() const;
 
-    task_code &operator=(const task_code &source)
-    {
-        _internal_code = source._internal_code;
-        return *this;
-    }
-    bool operator==(const task_code &r) { return _internal_code == r._internal_code; }
+    constexpr bool operator==(const task_code &r) { return _internal_code == r._internal_code; }
+
     bool operator!=(const task_code &r) { return !(*this == r); }
+
     operator int() const { return _internal_code; }
+
     int code() const { return _internal_code; }
+
 #ifdef DSN_USE_THRIFT_SERIALIZATION
     uint32_t read(::apache::thrift::protocol::TProtocol *iprot);
     uint32_t write(::apache::thrift::protocol::TProtocol *oprot) const;
@@ -115,6 +115,7 @@ public:
     static int max();
     static bool is_exist(const char *name);
     static task_code try_get(const char *name, task_code default_value);
+    static task_code try_get(const std::string &name, task_code default_value);
 
 private:
     task_code(const char *name);

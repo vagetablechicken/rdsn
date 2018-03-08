@@ -27,7 +27,7 @@
 #pragma once
 
 #include <dsn/cpp/auto_codes.h>
-#include <dsn/cpp/smart_pointers.h>
+#include <dsn/utility/smart_pointers.h>
 
 #include <sstream>
 

@@ -27,21 +27,10 @@
 
 #include <dsn/dist/replication/duplication_backlog_handler.h>
 #include <dsn/cpp/zlocks.h>
-#include <dsn/utility/message_utils.h>
+#include <dsn/cpp/message_utils.h>
 
 namespace dsn {
 namespace replication {
-
-inline std::string dsn_message_t_to_string(dsn_message_t req)
-{
-    req = dsn_msg_copy(req, true, false);
-    blob bb = dsn::move_message_to_blob(req);
-
-    binary_reader reader(bb);
-    std::string data;
-    reader.read(data);
-    return data;
-}
 
 struct mock_duplication_backlog_handler : public duplication_backlog_handler
 {
@@ -49,7 +38,7 @@ struct mock_duplication_backlog_handler : public duplication_backlog_handler
     void duplicate(mutation_tuple mut, err_callback cb) override
     {
         std::lock_guard<std::mutex> _(lock);
-        mutation_list.emplace_back(dsn_message_t_to_string(std::get<1>(mut)));
+        mutation_list.emplace_back(std::get<2>(mut).to_string());
         cb(error_s::ok());
     }
 

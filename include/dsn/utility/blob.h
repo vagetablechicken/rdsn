@@ -1,3 +1,29 @@
+/*
+ * The MIT License (MIT)
+ *
+ * Copyright (c) 2015 Microsoft Corporation
+ *
+ * -=- Robust Distributed System Nucleus (rDSN) -=-
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ */
+
 #pragma once
 
 #include <memory>
@@ -13,7 +39,7 @@ namespace dsn {
 class blob
 {
 public:
-    blob() : _buffer(nullptr), _data(nullptr), _length(0) {}
+    constexpr blob() : _buffer(nullptr), _data(nullptr), _length(0) {}
 
     blob(const std::shared_ptr<char> &buffer, unsigned int length)
         : _holder(buffer), _buffer(_holder.get()), _data(_holder.get()), _length(length)
@@ -38,43 +64,12 @@ public:
     {
     }
 
+    /// NOTE: Use dsn::string_view whenever possible.
+    /// blob is designed for shared buffer, never use it as constant view.
+    /// Maybe we could deprecate this function in the future.
     blob(const char *buffer, int offset, unsigned int length)
         : _buffer(buffer), _data(buffer + offset), _length(length)
     {
-    }
-
-    blob(const blob &source) noexcept
-        : _holder(source._holder),
-          _buffer(source._buffer),
-          _data(source._data),
-          _length(source._length)
-    {
-    }
-
-    blob(blob &&source) noexcept
-        : _holder(std::move(source._holder)),
-          _buffer(source._buffer),
-          _data(source._data),
-          _length(source._length)
-    {
-    }
-
-    blob &operator=(const blob &that) noexcept
-    {
-        _holder = that._holder;
-        _buffer = that._buffer;
-        _data = that._data;
-        _length = that._length;
-        return *this;
-    }
-
-    blob &operator=(blob &&that) noexcept
-    {
-        _holder = std::move(that._holder);
-        _buffer = that._buffer;
-        _data = that._data;
-        _length = that._length;
-        return *this;
     }
 
     void assign(const std::shared_ptr<char> &buffer, int offset, unsigned int length)
@@ -147,7 +142,7 @@ public:
 
     std::string to_string() const
     {
-        if (!data())
+        if (_length == 0)
             return {};
         return std::string(_data, _length);
     }

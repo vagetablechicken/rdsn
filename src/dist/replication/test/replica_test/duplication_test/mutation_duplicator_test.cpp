@@ -55,7 +55,7 @@ struct mutation_duplicator_test : public duplication_test_base
     {
         std::vector<std::string> actual;
         for (mutation_tuple mut : duplicator._mutation_batch->_mutations) {
-            actual.emplace_back(dsn_message_t_to_string(std::get<1>(mut)));
+            actual.emplace_back(std::get<2>(mut).to_string());
         }
         ASSERT_EQ(actual.size(), expected.size());
 
@@ -74,12 +74,13 @@ struct mutation_duplicator_test : public duplication_test_base
         mu->data.header.log_offset = 0;
         mu->data.header.timestamp = decree;
 
-        binary_writer writer;
-        writer.write(data);
+        std::shared_ptr<char> s(new char[data.length()]);
+        memcpy(s.get(), data.data(), data.length());
+        dsn::blob b(std::move(s), data.length());
 
         mu->data.updates.emplace_back(mutation_update());
         mu->data.updates.back().code = RPC_REPLICATION_WRITE_EMPTY;
-        mu->data.updates.back().data = writer.get_buffer();
+        mu->data.updates.back().data = std::move(b);
         mu->client_requests.push_back(nullptr);
 
         // mutation_duplicator always loads from hard disk,
@@ -230,7 +231,7 @@ TEST_F(mutation_duplicator_test, new_duplicator)
 
 TEST_F(mutation_duplicator_test, load_and_ship_mutations_1000)
 {
-    test_load_and_ship_mutations(1000);
+    test_load_and_ship_mutations(100);
 }
 
 TEST_F(mutation_duplicator_test, load_and_ship_mutations_2000)

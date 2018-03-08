@@ -30,7 +30,7 @@
 #include <dsn/c/api_layer1.h>
 #include <dsn/service_api_cpp.h>
 #include <dsn/cpp/clientlet.h>
-#include <dsn/cpp/smart_pointers.h>
+#include <dsn/utility/smart_pointers.h>
 
 namespace dsn {
 

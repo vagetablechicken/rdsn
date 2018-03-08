@@ -33,7 +33,8 @@
  *     xxxx-xx-xx, author, fix bug about xxx
  */
 
-#include <dsn/cpp/smart_pointers.h>
+#include <dsn/utility/smart_pointers.h>
+
 #include "mutation_cache.h"
 #include "mutation.h"
 

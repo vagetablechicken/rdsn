@@ -186,7 +186,7 @@ void mutation::write_to(binary_writer &writer, dsn_message_t /*to*/) const
     for (int i = 0; i < size; ++i) {
         std::string name;
         reader.read(name);
-        ::dsn::task_code code = dsn::task_code::try_get(name.c_str(), TASK_CODE_INVALID);
+        ::dsn::task_code code = dsn::task_code::try_get(name, TASK_CODE_INVALID);
         dassert(code != TASK_CODE_INVALID, "invalid mutation task code: %s", name.c_str());
         mu->data.updates[i].code = code;
 
@@ -197,11 +197,7 @@ void mutation::write_to(binary_writer &writer, dsn_message_t /*to*/) const
         reader.read_pod(lengths[i]);
     }
     for (int i = 0; i < size; ++i) {
-        int len = lengths[i];
-        std::shared_ptr<char> holder((char *)dsn_transient_malloc(len),
-                                     [](char *ptr) { dsn_transient_free((void *)ptr); });
-        reader.read(holder.get(), len);
-        mu->data.updates[i].data.assign(holder, 0, len);
+        reader.read(mu->data.updates[i].data, lengths[i]);
     }
 
     mu->client_requests.resize(mu->data.updates.size());
@@ -329,7 +325,6 @@ mutation_ptr mutation_queue::add_work(task_code code, dsn_message_t request, rep
         auto ret = _pending_mutation;
         _pending_mutation = nullptr;
         _current_op_count++;
-        //_current_op_counter.increment();
         return ret;
     }
 
@@ -351,11 +346,9 @@ mutation_ptr mutation_queue::add_work(task_code code, dsn_message_t request, rep
         auto ret = _pending_mutation;
         _pending_mutation = nullptr;
         _current_op_count++;
-        //_current_op_counter.increment();
         return ret;
     } else {
         _current_op_count++;
-        //_current_op_counter.increment();
         return unlink_next_workload();
     }
 }
@@ -363,7 +356,6 @@ mutation_ptr mutation_queue::add_work(task_code code, dsn_message_t request, rep
 mutation_ptr mutation_queue::check_possible_work(int current_running_count)
 {
     _current_op_count = current_running_count;
-    //_current_op_counter.set((uint64_t)current_running_count);
 
     if (_current_op_count >= _max_concurrent_op)
         return nullptr;
@@ -374,7 +366,6 @@ mutation_ptr mutation_queue::check_possible_work(int current_running_count)
             auto ret = _pending_mutation;
             _pending_mutation = nullptr;
             _current_op_count++;
-            //_current_op_counter.increment();
             return ret;
         } else {
             return nullptr;
@@ -384,7 +375,6 @@ mutation_ptr mutation_queue::check_possible_work(int current_running_count)
     // run further workload
     else {
         _current_op_count++;
-        //_current_op_counter.increment();
         return unlink_next_workload();
     }
 }

@@ -163,7 +163,11 @@ public:
     {
     }
 
-    string_view(const blob &buf) noexcept : ptr_(buf.data()), length_(buf.length()) {}
+    string_view(const blob &buf) noexcept // NOLINT(runtime/explicit)
+        : ptr_(buf.data()),
+          length_(buf.length())
+    {
+    }
 
     constexpr string_view(const char *str) // NOLINT(runtime/explicit)
         : ptr_(str),
