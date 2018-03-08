@@ -26,8 +26,6 @@
 
 #pragma once
 
-#include <boost/optional.hpp>
-
 #include "mutation_duplicator.h"
 
 #include <dsn/dist/replication/replication_types.h>

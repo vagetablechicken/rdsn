@@ -31,16 +31,22 @@
 #include "dist/replication/lib/replica_stub.h"
 
 #include <dsn/dist/replication/duplication_common.h>
+#include <dsn/utility/chrono_literals.h>
 
 namespace dsn {
 namespace replication {
 
+using namespace dsn::literals::chrono_literals;
+
 class replica_stub::duplication_impl
 {
 public:
-    explicit duplication_impl(replica_stub *stub)
-        : _stub(stub), _duplication_sync_in_progress(false)
+    explicit duplication_impl(replica_stub *stub) : _stub(stub) {}
+
+    void enqueue_duplication_sync(std::chrono::milliseconds delay_ms = 0_ms)
     {
+        tasking::enqueue(
+            RPC_CM_DUPLICATION_SYNC, tracker(), [this]() { duplication_sync(); }, 0, delay_ms);
     }
 
     // replica server periodically uploads current confirm points to meta server by sending
@@ -58,20 +64,14 @@ public:
     void update_confirmed_points(
         const std::map<gpid, std::vector<duplication_confirm_entry>> &confirmed_lists);
 
-    void init_duplication_confirm_timer();
-
-    bool is_duplication_sync_in_progress() const { return _duplication_sync_in_progress; }
+    clientlet *tracker() { return &_tracker; }
 
 private:
     friend class replica_stub_duplication_test;
 
     replica_stub *_stub;
 
-    ::dsn::task_ptr _duplication_sync_timer_task;
-
-    // Whether the dup sync task is in progress.
-    // We use it to ensure only single task working on dup sync.
-    std::atomic<bool> _duplication_sync_in_progress;
+    clientlet _tracker;
 };
 
 } // namespace replication

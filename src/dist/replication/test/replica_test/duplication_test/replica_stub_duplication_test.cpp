@@ -54,7 +54,7 @@ struct replica_stub_duplication_test : public duplication_test_base
         duplication_entry ent;
         ent.dupid = 1;
         ent.remote_address = "dsn://slave-cluster";
-        ent.status = duplication_status::DS_START;
+        ent.status = duplication_status::DS_PAUSE;
         ent.confirmed_decree = 0;
         rpc.response().dup_map[2] = {ent};
 
@@ -63,7 +63,7 @@ struct replica_stub_duplication_test : public duplication_test_base
             stub->find_replica(2, 1)->get_replica_duplication_impl()._duplications[1];
 
         ASSERT_TRUE(dup);
-        ASSERT_EQ(dup->view().status, duplication_status::DS_START);
+        ASSERT_EQ(dup->view().status, duplication_status::DS_PAUSE);
     }
 
 protected:
@@ -105,24 +105,13 @@ TEST_F(replica_stub_duplication_test, duplication_sync)
             duplication_sync_request &req = duplication_sync_rpc::mail_box().back();
             ASSERT_EQ(req.confirm_list.size(), 0);
         }
-        {
-            for (auto &e : stub->mock_replicas) {
-                e.second->as_primary();
-            }
-            dup_impl->duplication_sync();
-
-            // do nothing when the prior duplication is still in progress
-            ASSERT_EQ(duplication_sync_rpc::mail_box().size(), 1);
-        }
     }
 
     RPC_MOCKING(duplication_sync_rpc)
     {
-        // unset flag duplication_sync_in_progress
-        auto request = dsn::make_unique<duplication_sync_request>();
-        duplication_sync_rpc rpc(std::move(request), RPC_CM_DUPLICATION_SYNC);
-        dup_impl->on_duplication_sync_reply(dsn::ERR_TIMEOUT, rpc);
-
+        for (auto &e : stub->mock_replicas) {
+            e.second->as_primary();
+        }
         dup_impl->duplication_sync();
         ASSERT_EQ(duplication_sync_rpc::mail_box().size(), 1);
 
@@ -133,8 +122,6 @@ TEST_F(replica_stub_duplication_test, duplication_sync)
         for (int appid = 1; appid <= total_app_num; appid++) {
             ASSERT_TRUE(req.confirm_list.find(dsn::gpid(appid, 1)) != req.confirm_list.end());
         }
-
-        ASSERT_TRUE(stub->get_replica_stub_duplication_impl().is_duplication_sync_in_progress());
     }
 }
 
@@ -148,7 +135,7 @@ TEST_F(replica_stub_duplication_test, update_duplication_map)
     { // Ensure update_duplication_map adds new duplications if they are not existed.
         duplication_entry ent;
         ent.dupid = 2;
-        ent.status = duplication_status::DS_START;
+        ent.status = duplication_status::DS_PAUSE;
         ent.confirmed_decree = 0;
 
         dup_map[1].push_back(ent);
@@ -159,12 +146,15 @@ TEST_F(replica_stub_duplication_test, update_duplication_map)
 
         // update duplicated decree of 1, 3, 5 to 2
         auto dup = find_dup(stub->find_replica(1, 1), 2);
+        ASSERT_TRUE(dup);
         dup->update_state(dup->view().set_last_decree(2));
 
         dup = find_dup(stub->find_replica(3, 1), 2);
+        ASSERT_TRUE(dup);
         dup->update_state(dup->view().set_last_decree(2));
 
         dup = find_dup(stub->find_replica(5, 1), 2);
+        ASSERT_TRUE(dup);
         dup->update_state(dup->view().set_last_decree(2));
     }
 

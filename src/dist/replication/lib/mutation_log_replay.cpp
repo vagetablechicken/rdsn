@@ -77,8 +77,8 @@ inline static error_s read_log_block(log_file_ptr &log,
 
 } // namespace internal
 
-/*static*/ error_s mutation_log::replay_block(log_file_ptr log,
-                                              replay_callback callback,
+/*static*/ error_s mutation_log::replay_block(log_file_ptr &log,
+                                              replay_callback &callback,
                                               bool read_from_start,
                                               int64_t &end_offset)
 {

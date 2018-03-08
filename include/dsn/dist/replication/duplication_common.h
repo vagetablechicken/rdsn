@@ -29,7 +29,7 @@
 #include <dsn/dist/replication/replication.types.h>
 #include <dsn/cpp/rpc_holder.h>
 #include <dsn/cpp/json_helper.h>
-#include <dsn/cpp/errors.h>
+#include <dsn/utility/errors.h>
 
 namespace dsn {
 namespace replication {
@@ -62,15 +62,28 @@ inline const char *duplication_status_to_string(const duplication_status::type &
 
 inline void json_encode(std::stringstream &out, const duplication_status::type &s)
 {
-    out << duplication_status_to_string(s);
+    out << '\"' << duplication_status_to_string(s) << '\"';
 }
 
 inline bool json_decode(::dsn::json::string_tokenizer &in, duplication_status::type &s)
 {
-    int i;
-    json_decode(in, i);
-    s = duplication_status::type(i);
-    return true;
+    static const std::map<std::string, duplication_status::type>
+        _duplication_status_NAMES_TO_VALUES = {
+            {"DS_INIT", duplication_status::DS_INIT},
+            {"DS_PAUSE", duplication_status::DS_PAUSE},
+            {"DS_START", duplication_status::DS_START},
+            {"DS_REMOVED", duplication_status::DS_REMOVED},
+        };
+
+    std::string name;
+    json_decode(in, name);
+    auto it = _duplication_status_NAMES_TO_VALUES.find(name);
+    if (it != _duplication_status_NAMES_TO_VALUES.end()) {
+        s = it->second;
+        return true;
+    }
+    dfatal("unexpected duplication_status name: \"%s\"", name.c_str());
+    __builtin_unreachable();
 }
 
 } // namespace replication

@@ -27,11 +27,12 @@
 #pragma once
 
 #include <dsn/cpp/clientlet.h>
+#include <dsn/cpp/message_utils.h>
 #include <dsn/dist/replication/replication_types.h>
 #include <dsn/dist/replication/replication_app_base.h>
 #include <dsn/dist/replication/duplication_common.h>
 #include <dsn/dist/replication/fmt_utils.h>
-#include <dsn/utility/message_utils.h>
+#include <dsn/utility/chrono_literals.h>
 
 #include "dist/replication/lib/replica.h"
 #include "dist/replication/lib/prepare_list.h"
@@ -41,6 +42,8 @@
 
 namespace dsn {
 namespace replication {
+
+using namespace dsn::literals::chrono_literals;
 
 class duplication_view
 {
@@ -112,15 +115,15 @@ class mutation_duplicator
                     break;
                 }
                 if (popped->get_decree() <= _mutation_buffer.last_committed_decree()) {
-                    for (const mutation_update &update : mu->data.updates) {
-                        dsn_message_t req = dsn_msg_create_received_request(
+                    for (mutation_update &update : mu->data.updates) {
+                        dsn_message_t req = from_blob_to_received_msg(
                             update.code,
-                            (dsn_msg_serialize_format)update.serialization_type,
-                            (void *)update.data.data(),
-                            update.data.length());
-                        dsn::blob b = move_message_to_blob(req);
-                        _mutations.emplace(
-                            std::make_tuple(mu->data.header.timestamp, req, std::move(b)));
+                            update.data,
+                            0,
+                            0,
+                            dsn_msg_serialize_format(update.serialization_type));
+                        _mutations.emplace(std::make_tuple(
+                            mu->data.header.timestamp, req, std::move(update.data)));
                     }
 
                     // update last_decree
@@ -241,8 +244,7 @@ public:
 
     /// ================================= Implementation =================================== ///
 
-    void
-    enqueue_start_duplication(std::chrono::milliseconds delay_ms = std::chrono::milliseconds(0))
+    void enqueue_start_duplication(std::chrono::milliseconds delay_ms = 0_ms)
     {
         tasking::enqueue(LPC_DUPLICATE_MUTATIONS,
                          tracker(),
@@ -263,7 +265,7 @@ public:
         _current_log_file = find_log_file_with_min_index(log_files);
         if (_current_log_file == nullptr) {
             // wait 10 seconds if there's no private log.
-            enqueue_start_duplication(std::chrono::milliseconds(1000 * 10));
+            enqueue_start_duplication(10_s);
             return;
         }
 
@@ -280,7 +282,7 @@ public:
         return log_file_map.begin()->second;
     }
 
-    void enqueue_do_duplication(std::chrono::milliseconds delay_ms = std::chrono::milliseconds(0))
+    void enqueue_do_duplication(std::chrono::milliseconds delay_ms = 0_ms)
     {
         tasking::enqueue(LPC_DUPLICATE_MUTATIONS,
                          tracker(),
@@ -302,7 +304,7 @@ public:
         if (_mutation_batch->empty()) {
             if (!have_more()) {
                 // wait 10 seconds for next try if no mutation was added.
-                enqueue_do_duplication(std::chrono::milliseconds(1000 * 10));
+                enqueue_do_duplication(10_s);
                 return;
             }
 
@@ -312,7 +314,7 @@ public:
                     enqueue_do_duplication();
                 } else {
                     // wait 10 sec if there're mutations written but unreadable.
-                    enqueue_do_duplication(std::chrono::milliseconds(1000 * 10));
+                    enqueue_do_duplication(10_s);
                 }
                 return;
             }
@@ -324,7 +326,7 @@ public:
 
         if (_mutation_batch->empty()) {
             // retry if the loaded block contains no mutation
-            enqueue_do_duplication(std::chrono::milliseconds(1000));
+            enqueue_do_duplication(1_s);
         } else {
             start_shipping_mutation_batch();
         }
@@ -394,8 +396,7 @@ public:
         return true;
     }
 
-    task_ptr
-    enqueue_ship_mutations(std::chrono::milliseconds delay_ms = std::chrono::milliseconds(0))
+    task_ptr enqueue_ship_mutations(std::chrono::milliseconds delay_ms = 0_ms)
     {
         return tasking::enqueue(LPC_DUPLICATE_MUTATIONS,
                                 tracker(),
@@ -425,9 +426,8 @@ public:
         }
     }
 
-    void
-    enqueue_loop_to_duplicate(const mutation_tuple &mut,
-                              std::chrono::milliseconds delay_ms = std::chrono::milliseconds(0))
+    void enqueue_loop_to_duplicate(const mutation_tuple &mut,
+                                   std::chrono::milliseconds delay_ms = 0_ms)
     {
         tasking::enqueue(LPC_DUPLICATE_MUTATIONS,
                          tracker(),
@@ -462,12 +462,12 @@ public:
                     update_state(new_state);
 
                     // delay 1 second to start next duplication job
-                    enqueue_do_duplication(std::chrono::milliseconds(1000));
+                    enqueue_do_duplication(1_s);
                 }
             } else {
                 // retry infinitely whenever error occurs.
                 // delay 1 sec for retry.
-                enqueue_loop_to_duplicate(mut, std::chrono::milliseconds(1000));
+                enqueue_loop_to_duplicate(mut, 1_s);
             }
         });
     }

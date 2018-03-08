@@ -40,17 +40,12 @@ void replica_stub::duplication_impl::duplication_sync()
         return;
     }
 
-    // dup sync is still in progress
-    if (_duplication_sync_in_progress) {
-        return;
-    }
-
     ddebug("duplication_sync");
 
     auto req = make_unique<duplication_sync_request>();
     req->node = _stub->primary_address();
     {
-        zauto_lock l(_stub->_replicas_lock);
+        zauto_read_lock l(_stub->_replicas_lock);
 
         // collects confirm points from all replicas(primary) on this server
         for (auto &kv : _stub->_replicas) {
@@ -70,36 +65,10 @@ void replica_stub::duplication_impl::duplication_sync()
     call_duplication_sync_rpc(std::move(req));
 }
 
-void replica_stub::duplication_impl::init_duplication_confirm_timer()
-{
-    _duplication_sync_timer_task = tasking::enqueue_timer(
-        LPC_DUPLICATION_SYNC_TIMER,
-        _stub,
-        [this]() { duplication_sync(); },
-        std::chrono::milliseconds(_stub->_options.duplication_sync_interval_ms),
-        0,
-        std::chrono::milliseconds(_stub->_options.duplication_sync_interval_ms));
-}
-
-// defer implements the defer-semantic of golang. Move it to core lib if
-// there are other use cases.
-// See https://github.com/scylladb/seastar/blob/master/util/defer.hh
-// for a better version of `defer`.
-struct defer
-{
-    defer(std::function<void()> f) : _f(std::move(f)) {}
-    ~defer() { _f(); }
-private:
-    std::function<void()> _f;
-};
-
 void replica_stub::duplication_impl::on_duplication_sync_reply(error_code err,
                                                                duplication_sync_rpc rpc)
 {
     ddebug("on_duplication_sync_reply");
-
-    //  end synchronization when function exits
-    defer _([this]() { _duplication_sync_in_progress.store(false); });
 
     duplication_sync_response &resp = rpc.response();
     if (resp.err != ERR_OK) {
@@ -107,15 +76,12 @@ void replica_stub::duplication_impl::on_duplication_sync_reply(error_code err,
     }
     if (err != ERR_OK) {
         dwarn("on_duplication_sync_reply: err(%s)", err.to_string());
+    } else {
+        update_duplication_map(resp.dup_map);
 
-        // no need to retry immediately
-        return;
-    }
-
-    update_duplication_map(resp.dup_map);
-
-    if (!rpc.request().confirm_list.empty()) {
-        update_confirmed_points(rpc.request().confirm_list);
+        if (!rpc.request().confirm_list.empty()) {
+            update_confirmed_points(rpc.request().confirm_list);
+        }
     }
 }
 
@@ -123,7 +89,7 @@ void replica_stub::duplication_impl::on_duplication_sync_reply(error_code err,
 void replica_stub::duplication_impl::update_duplication_map(
     std::map<int32_t, std::vector<duplication_entry>> &dup_map)
 {
-    zauto_lock l(_stub->_replicas_lock);
+    zauto_read_lock l(_stub->_replicas_lock);
 
     for (auto &ent : _stub->_replicas) {
         gpid pid = ent.first;
@@ -148,8 +114,11 @@ void replica_stub::duplication_impl::call_duplication_sync_rpc(
     rpc_address meta_server_address(_stub->get_meta_server_address());
     rpc.call(meta_server_address, _stub, [this, rpc](error_code err) {
         on_duplication_sync_reply(err, rpc);
+
+        // start a new round of synchronization
+        enqueue_duplication_sync(
+            std::chrono::milliseconds(_stub->_options.duplication_sync_interval_ms));
     });
-    _duplication_sync_in_progress.store(true);
 }
 
 void replica_stub::duplication_impl::update_confirmed_points(

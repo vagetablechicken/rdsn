@@ -24,7 +24,7 @@
  * THE SOFTWARE.
  */
 
-#include <dsn/cpp/errors.h>
+#include <dsn/utility/errors.h>
 #include <dsn/utility/filesystem.h>
 
 #include "dist/replication/lib/mutation_log.h"

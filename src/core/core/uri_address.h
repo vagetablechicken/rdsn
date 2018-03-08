@@ -39,7 +39,7 @@
 #include <dsn/dist/partition_resolver.h>
 #include <algorithm> // for std::find()
 #include <dsn/utility/configuration.h>
-#include <dsn/cpp/errors.h>
+#include <dsn/utility/errors.h>
 
 namespace dsn {
 /** A RPC URI address. */

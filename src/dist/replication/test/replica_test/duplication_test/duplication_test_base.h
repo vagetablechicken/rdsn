@@ -26,7 +26,7 @@
 
 #pragma once
 
-#include <dsn/cpp/smart_pointers.h>
+#include <dsn/utility/smart_pointers.h>
 
 #include "dist/replication/lib/replica_stub.h"
 #include "dist/replication/lib/duplication/replica_duplication.h"

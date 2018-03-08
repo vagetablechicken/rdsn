@@ -24,30 +24,46 @@
  * THE SOFTWARE.
  */
 
-#include <dsn/c/api_layer1.h>
-#include <dsn/utility/binary_reader.h>
-#include <dsn/cpp/message_utils.h>
+#pragma once
 
-// Header file: dsn/utility/message_utils.h
+#include <chrono>
+
+/// This is a simple implementation of chrono literals
+/// (http://en.cppreference.com/w/cpp/chrono/duration#Literals).
+/// Deprecate this when we have our compiler version updated to gcc-5
+/// (https://en.cppreference.com/w/cpp/compiler_support).
 
 namespace dsn {
+inline namespace literals {
+inline namespace chrono_literals {
 
-/*extern*/ dsn_message_t from_blob_to_received_msg(dsn::task_code rpc_code,
-                                                   const blob &bb,
-                                                   int thread_hash,
-                                                   uint64_t partition_hash,
-                                                   dsn_msg_serialize_format serialization_type)
+constexpr std::chrono::hours operator"" _h(unsigned long long v) { return std::chrono::hours{v}; }
+
+constexpr std::chrono::minutes operator"" _min(unsigned long long v)
 {
-    auto msg = ::dsn::message_ex::create_receive_message_with_standalone_header(bb);
-    msg->local_rpc_code = rpc_code;
-    const char *name = rpc_code.to_string();
-    strncpy(msg->header->rpc_name, name, strlen(name));
-
-    msg->header->client.thread_hash = thread_hash;
-    msg->header->client.partition_hash = partition_hash;
-    msg->header->context.u.serialize_format = serialization_type;
-    msg->add_ref(); // released by callers explicitly using dsn_msg_release
-    return msg;
+    return std::chrono::minutes{v};
 }
 
+constexpr std::chrono::seconds operator"" _s(unsigned long long v)
+{
+    return std::chrono::seconds{v};
+}
+
+constexpr std::chrono::milliseconds operator"" _ms(unsigned long long v)
+{
+    return std::chrono::milliseconds{v};
+}
+
+constexpr std::chrono::microseconds operator"" _us(unsigned long long v)
+{
+    return std::chrono::microseconds{v};
+}
+
+constexpr std::chrono::nanoseconds operator"" _ns(unsigned long long v)
+{
+    return std::chrono::nanoseconds{v};
+}
+
+} // inline namespace chrono_literals
+} // inline namespace literals
 } // namespace dsn

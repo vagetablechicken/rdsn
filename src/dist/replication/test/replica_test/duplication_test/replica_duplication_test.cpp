@@ -42,7 +42,7 @@ struct replica_duplication_test : public duplication_test_base
 
         duplication_entry ent;
         ent.dupid = 1;
-        ent.status = duplication_status::DS_START;
+        ent.status = duplication_status::DS_PAUSE;
         ent.remote_address = "dsn://slave-cluster";
         d.sync_duplication(ent);
         ASSERT_EQ(d._duplications.size(), 1);

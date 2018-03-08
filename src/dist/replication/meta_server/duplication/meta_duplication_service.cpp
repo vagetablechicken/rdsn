@@ -85,8 +85,9 @@ void meta_duplication_service::query_duplication_info(duplication_query_rpc &rpc
 
 // Lock: no lock held.
 // ThreadPool(WRITE): THREAD_POOL_META_STATE
-void meta_duplication_service::do_duplication_status_change(
-    std::shared_ptr<app_state> app, duplication_info_s_ptr dup, duplication_status_change_rpc &rpc)
+void meta_duplication_service::do_duplication_status_change(std::shared_ptr<app_state> app,
+                                                            duplication_info_s_ptr dup,
+                                                            duplication_status_change_rpc &rpc)
 {
     auto on_write_storage_complete = [this, rpc, app, dup](error_code error) {
         auto &resp = rpc.response();
@@ -119,8 +120,6 @@ void meta_duplication_service::do_duplication_status_change(
             dassert(false, "we can't handle this error: %s", error.to_string());
         }
     };
-
-    dup->alter_status(rpc.request().status);
 
     // store the duplication in requested status.
     blob value = dup->copy_in_status(rpc.request().status)->to_json_blob();
@@ -170,8 +169,8 @@ void meta_duplication_service::change_duplication_status(duplication_status_chan
 // Lock: no lock held.
 // ThreadPool(WRITE): THREAD_POOL_META_STATE
 void meta_duplication_service::do_add_duplication(std::shared_ptr<app_state> app,
-                                                        duplication_info_s_ptr dup,
-                                                        duplication_add_rpc rpc)
+                                                  duplication_info_s_ptr dup,
+                                                  duplication_add_rpc rpc)
 {
     auto on_write_storage_complete = [this, app, dup, rpc](error_code ec) {
 
@@ -223,8 +222,12 @@ void meta_duplication_service::do_create_parent_dir_before_adding_duplication(
     ddebug_f("do_create_parent_dir_before_adding_duplication (path: {})", parent_path);
 
     auto on_create_parent_complete = [this, app, dup, rpc](error_code ec) {
-        auto retry_this = std::bind(
-            &meta_duplication_service::do_create_parent_dir_before_adding_duplication, this, app, dup, rpc);
+        auto retry_this =
+            std::bind(&meta_duplication_service::do_create_parent_dir_before_adding_duplication,
+                      this,
+                      app,
+                      dup,
+                      rpc);
 
         if (ec == ERR_OK || ec == ERR_NODE_ALREADY_EXIST) {
             do_add_duplication(app, dup, rpc);
@@ -420,7 +423,7 @@ meta_duplication_service::meta_duplication_service(server_state *state, meta_ser
 
 std::shared_ptr<duplication_info>
 meta_duplication_service::new_dup_from_init(const std::string &remote_cluster_address,
-                                                  app_state *app) const
+                                            app_state *app) const
 {
     duplication_info_s_ptr dup;
 
@@ -451,8 +454,7 @@ void meta_duplication_service::recover_from_meta_state()
 }
 
 // ThreadPool(WRITE): THREAD_POOL_META_STATE
-void meta_duplication_service::do_recover_from_meta_state_for_app(
-    std::shared_ptr<app_state> app)
+void meta_duplication_service::do_recover_from_meta_state_for_app(std::shared_ptr<app_state> app)
 {
     _meta_svc->get_remote_storage()->get_children(
         get_duplication_path(*app),
@@ -469,8 +471,10 @@ void meta_duplication_service::do_recover_from_meta_state_for_app(
                     do_restore_dup_from_meta_state(raw_dup_id, app);
                 }
             } else if (ec == ERR_TIMEOUT) {
-                auto retry_this = std::bind(
-                    &meta_duplication_service::do_recover_from_meta_state_for_app, this, std::move(app));
+                auto retry_this =
+                    std::bind(&meta_duplication_service::do_recover_from_meta_state_for_app,
+                              this,
+                              std::move(app));
 
                 derror("request was timeout, retry again after 1 second "
                        "[do_recover_from_meta_state_for_app]");
@@ -488,7 +492,7 @@ void meta_duplication_service::do_recover_from_meta_state_for_app(
 }
 
 void meta_duplication_service::do_restore_dup_from_meta_state(const std::string &dupid,
-                                                                    std::shared_ptr<app_state> app)
+                                                              std::shared_ptr<app_state> app)
 {
     _meta_svc->get_remote_storage()->get_data(
         get_duplication_path(*app, dupid),
@@ -498,8 +502,8 @@ void meta_duplication_service::do_restore_dup_from_meta_state(const std::string 
                 auto dup = duplication_info::create_from_blob(blob_dup_info);
                 app->duplications[dup->id] = dup;
             } else if (ec == ERR_TIMEOUT) {
-                auto retry_this =
-                    std::bind(&meta_duplication_service::do_restore_dup_from_meta_state, this, dupid, app);
+                auto retry_this = std::bind(
+                    &meta_duplication_service::do_restore_dup_from_meta_state, this, dupid, app);
 
                 derror("request was timeout, retry again after 1 second "
                        "[do_restore_dup_from_meta_state]");
