@@ -159,7 +159,9 @@ struct mutation_duplicator_test : public duplication_test_base
         }
     }
 
-    void test_start_duplication(int num_entries, int private_log_size_mb)
+    void test_start_duplication(int num_entries,
+                                int private_log_size_mb,
+                                mock_duplication_backlog_handler::error_hook hook = nullptr)
     {
         std::vector<std::string> mutations;
 
@@ -185,17 +187,20 @@ struct mutation_duplicator_test : public duplication_test_base
         {
             replica->init_private_log(mlog);
             auto duplicator = create_test_duplicator();
-            duplicator->start();
-
             auto backlog_handler = dynamic_cast<mock_duplication_backlog_handler *>(
                 duplicator->_backlog_handler.get());
+            backlog_handler->set_error_hook(hook);
 
-            while (backlog_handler->get_mutation_list_safe().size() < mutations.size()) {
-                sleep(1);
+            {
+                duplicator->start();
+
+                while (backlog_handler->get_mutation_list_safe().size() < mutations.size()) {
+                    sleep(1);
+                }
+
+                duplicator->pause();
+                duplicator->wait_all();
             }
-
-            duplicator->pause();
-            duplicator->wait_all();
 
             ASSERT_EQ(backlog_handler->mutation_list, mutations)
                 << backlog_handler->mutation_list.size() << " vs " << mutations.size();
@@ -231,7 +236,7 @@ TEST_F(mutation_duplicator_test, new_duplicator)
 
 TEST_F(mutation_duplicator_test, load_and_ship_mutations_1000)
 {
-    test_load_and_ship_mutations(100);
+    test_load_and_ship_mutations(1000);
 }
 
 TEST_F(mutation_duplicator_test, load_and_ship_mutations_2000)
@@ -311,6 +316,19 @@ TEST_F(mutation_duplicator_test, duplication_view)
     duplicator->update_state(duplicator->view().set_confirmed_decree(10));
     ASSERT_EQ(duplicator->view().confirmed_decree, 10);
     ASSERT_EQ(duplicator->view().last_decree, 10);
+}
+
+TEST_F(mutation_duplicator_test, fail_and_retry)
+{
+    test_start_duplication(1000, 1, []() -> dsn::error_s {
+        static bool retry = true;
+        auto err = dsn::error_s::ok();
+        if (retry) {
+            err = dsn::error_s::make(ERR_TIMEOUT);
+        }
+        retry = !retry;
+        return err;
+    });
 }
 
 } // namespace replication

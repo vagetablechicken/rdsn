@@ -450,10 +450,10 @@ public:
                          std::get<0>(mut));
             }
 
-            // impose a lock here since there may have multiple tasks
-            // erasing elements in the pending set.
-            ::dsn::service::zauto_lock _(_pending_lock);
             if (err.is_ok()) {
+                // impose a lock here since there may have multiple tasks
+                // erasing elements in the pending set.
+                ::dsn::service::zauto_lock _(_pending_lock);
                 _pending_mutations.erase(mut);
 
                 if (_pending_mutations.empty()) {

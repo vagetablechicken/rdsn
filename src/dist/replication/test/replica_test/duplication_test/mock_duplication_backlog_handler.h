@@ -38,8 +38,14 @@ struct mock_duplication_backlog_handler : public duplication_backlog_handler
     void duplicate(mutation_tuple mut, err_callback cb) override
     {
         std::lock_guard<std::mutex> _(lock);
-        mutation_list.emplace_back(std::get<2>(mut).to_string());
-        cb(error_s::ok());
+        auto err = dsn::error_s::ok();
+        if (_err_hook) {
+            err = _err_hook();
+        }
+        if (err.is_ok()) {
+            mutation_list.emplace_back(std::get<2>(mut).to_string());
+        }
+        cb(err);
     }
 
     // thread-safe
@@ -49,8 +55,12 @@ struct mock_duplication_backlog_handler : public duplication_backlog_handler
         return mutation_list;
     }
 
+    typedef std::function<dsn::error_s()> error_hook;
+    void set_error_hook(error_hook hook) { _err_hook = std::move(hook); }
+
     std::vector<std::string> mutation_list;
     mutable std::mutex lock;
+    error_hook _err_hook;
 };
 
 struct mock_duplication_backlog_handler_factory : public duplication_backlog_handler_factory
