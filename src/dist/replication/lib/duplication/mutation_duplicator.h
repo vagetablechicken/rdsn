@@ -265,7 +265,7 @@ public:
         _current_log_file = find_log_file_with_min_index(log_files);
         if (_current_log_file == nullptr) {
             // wait 10 seconds if there's no private log.
-            enqueue_start_duplication(std::chrono::milliseconds(1000 * 10));
+            enqueue_start_duplication(10_s);
             return;
         }
 
@@ -304,7 +304,7 @@ public:
         if (_mutation_batch->empty()) {
             if (!have_more()) {
                 // wait 10 seconds for next try if no mutation was added.
-                enqueue_do_duplication(std::chrono::milliseconds(1000 * 10));
+                enqueue_do_duplication(10_s);
                 return;
             }
 
@@ -314,7 +314,7 @@ public:
                     enqueue_do_duplication();
                 } else {
                     // wait 10 sec if there're mutations written but unreadable.
-                    enqueue_do_duplication(std::chrono::milliseconds(1000 * 10));
+                    enqueue_do_duplication(10_s);
                 }
                 return;
             }
