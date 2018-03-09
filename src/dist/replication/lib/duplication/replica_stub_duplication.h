@@ -64,14 +64,12 @@ public:
     void update_confirmed_points(
         const std::map<gpid, std::vector<duplication_confirm_entry>> &confirmed_lists);
 
-    clientlet *tracker() { return &_tracker; }
+    clientlet *tracker() { return _stub; }
 
 private:
     friend class replica_stub_duplication_test;
 
     replica_stub *_stub;
-
-    clientlet _tracker;
 };
 
 } // namespace replication

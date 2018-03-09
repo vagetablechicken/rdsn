@@ -36,7 +36,9 @@ namespace replication {
 void replica_stub::duplication_impl::duplication_sync()
 {
     if (_stub->_state == NS_Disconnected) {
-        // stop if is disconnected from meta server
+        // retry if disconnected from meta server
+        enqueue_duplication_sync_timer(
+            std::chrono::milliseconds(_stub->options().duplication_sync_interval_ms));
         return;
     }
 
