@@ -248,7 +248,9 @@ DSN_API void dsn_task_tracker_wait_all(dsn_task_tracker_t tracker)
 DSN_API void dsn_task_call(dsn_task_t task, int delay_milliseconds)
 {
     auto t = ((::dsn::task *)(task));
-    dassert(t->spec().type == TASK_TYPE_COMPUTE, "must be common or timer task");
+    dassert(t->spec().type == TASK_TYPE_COMPUTE,
+            "must be common or timer task [type: %s]",
+            ::enum_to_string(t->spec().type));
 
     t->set_delay(delay_milliseconds);
     t->enqueue();

@@ -116,7 +116,7 @@ void replica_stub::duplication_impl::call_duplication_sync_rpc(
         on_duplication_sync_reply(err, rpc);
 
         // start a new round of synchronization
-        enqueue_duplication_sync(
+        enqueue_duplication_sync_timer(
             std::chrono::milliseconds(_stub->_options.duplication_sync_interval_ms));
     });
 }

@@ -43,10 +43,10 @@ class replica_stub::duplication_impl
 public:
     explicit duplication_impl(replica_stub *stub) : _stub(stub) {}
 
-    void enqueue_duplication_sync(std::chrono::milliseconds delay_ms = 0_ms)
+    void enqueue_duplication_sync_timer(std::chrono::milliseconds delay_ms = 0_ms)
     {
         tasking::enqueue(
-            RPC_CM_DUPLICATION_SYNC, tracker(), [this]() { duplication_sync(); }, 0, delay_ms);
+            LPC_DUPLICATION_SYNC_TIMER, tracker(), [this]() { duplication_sync(); }, 0, delay_ms);
     }
 
     // replica server periodically uploads current confirm points to meta server by sending
