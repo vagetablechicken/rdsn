@@ -105,10 +105,9 @@ struct duplication_test_base : public ::testing::Test
 {
     duplication_test_base()
     {
-        duplication::init_backlog_handler_factory(new mock_duplication_backlog_handler_factory);
+        register_backlog_handler_factory(
+            []() { return new mock_duplication_backlog_handler_factory(); });
     }
-
-    ~duplication_test_base() { duplication_backlog_handler_factory::undo_init(); }
 
     static std::unique_ptr<mock_replica> create_replica(replica_stub *stub,
                                                         int appid = 1,

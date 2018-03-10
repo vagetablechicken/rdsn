@@ -16,18 +16,6 @@ protected:
     static std::unordered_map<std::string, rpc_handler> _handlers;
     static std::vector<rpc_handler> _vhandlers;
 
-    template <typename TRpcHolder>
-    static bool register_async_rpc_handler_with_rpc_holder(dsn::task_code rpc_code,
-                                                           const char *name,
-                                                           void (*handler)(T *svc, TRpcHolder rpc))
-    {
-        rpc_handler h = [handler](T *p, dsn_message_t request) {
-            handler(p, TRpcHolder::auto_reply(request));
-        };
-
-        return register_async_rpc_handler(rpc_code, name, h);
-    }
-
     template <typename TReq, typename TResp>
     static bool
     register_async_rpc_handler(dsn::task_code rpc_code,

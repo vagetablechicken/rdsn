@@ -607,7 +607,7 @@ void replica_stub::initialize_start()
         _state = NS_Connected;
     }
 
-    _duplication_impl->enqueue_duplication_sync_timer();
+    _duplication_impl->initialize_and_start();
 }
 
 dsn::error_code replica_stub::on_kill_replica(gpid pid)

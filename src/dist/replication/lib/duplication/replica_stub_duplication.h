@@ -32,6 +32,7 @@
 
 #include <dsn/dist/replication/duplication_common.h>
 #include <dsn/utility/chrono_literals.h>
+#include <dsn/dist/replication/duplication_backlog_handler.h>
 
 namespace dsn {
 namespace replication {
@@ -42,6 +43,14 @@ class replica_stub::duplication_impl
 {
 public:
     explicit duplication_impl(replica_stub *stub) : _stub(stub) {}
+
+    void initialize_and_start()
+    {
+        duplication_backlog_handler_factory::initialize();
+        enqueue_duplication_sync_timer();
+    }
+
+    /// ================================= Implementation ============================= ///
 
     void enqueue_duplication_sync_timer(std::chrono::milliseconds delay_ms = 0_ms)
     {

@@ -51,7 +51,6 @@ struct mutation_tuple_cmp
         return std::get<0>(lhs) < std::get<0>(rhs);
     }
 };
-
 typedef std::set<mutation_tuple, mutation_tuple_cmp> mutation_tuple_set;
 
 /// \brief This is an interface for handling the mutation logs intended to
@@ -67,8 +66,6 @@ public:
     /// \param cb: Call it when a specified mutation was sent successfully or
     ///            failed with an error.
     virtual void duplicate(mutation_tuple mutation, err_callback cb) = 0;
-
-    virtual ~duplication_backlog_handler() = default;
 };
 
 /// A singleton interface to get duplication_backlog_handler for specified
@@ -76,40 +73,27 @@ public:
 class duplication_backlog_handler_factory
 {
 public:
-    /// Thread-safe
+    /// The implementation must be thread-safe.
     virtual std::unique_ptr<duplication_backlog_handler>
     create(const std::string &remote_cluster_address, const std::string &app) = 0;
 
-    /// \internal
-    /// Thread-safe
-    static duplication_backlog_handler_factory *get_singleton()
+    /// \see dsn::replication::mutation_duplicator
+    static duplication_backlog_handler_factory *get_singleton() { return _instance.get(); }
+
+    /// \see dsn::replication::replica_stub_duplication_impl::initialize_and_start()
+    static void initialize()
     {
-        dassert(_inited && _instance != nullptr,
-                "duplication_backlog_handler_group must have been initialized");
-        return _instance.get();
+        dassert(_initializer != nullptr, "forget to call set_initializer()?");
+        _instance.reset(_initializer());
     }
 
-    /// \internal
-    /// Thread-safe
-    static void init_singleton(duplication_backlog_handler_factory *group)
-    {
-        std::lock_guard<std::mutex> _(_lock);
-        dassert(!_inited, "duplication_backlog_handler_group has been initialized.");
-        _instance.reset(group);
-        _inited = true;
-    }
-
-    /// \internal
-    /// \warning This method is only used for unit test.
-    static void undo_init() { _inited = false; }
+    typedef std::function<duplication_backlog_handler_factory *()> initializer_func;
+    static void set_initializer(initializer_func f) { _initializer = std::move(f); }
 
 private:
     static std::unique_ptr<duplication_backlog_handler_factory> _instance;
-    static std::atomic<bool> _inited;
-    static std::mutex _lock;
+    static initializer_func _initializer;
 };
-
-namespace duplication {
 
 /// \brief A helper utility of ::dsn::replication::duplication_backlog_handler_group::create.
 inline std::unique_ptr<duplication_backlog_handler>
@@ -119,14 +103,14 @@ new_backlog_handler(const std::string &remote_cluster_address, const std::string
                                                                         app);
 }
 
-/// \brief Initializes the backlog_handler_group singleton.
-/// Note that this function should be called only once.
-inline void init_backlog_handler_factory(duplication_backlog_handler_factory *group)
+/// \brief For upper-level application to register their backlog_handler_factory.
+/// \return a dummy to allow this function to be called before main.
+inline bool
+register_backlog_handler_factory(duplication_backlog_handler_factory::initializer_func f)
 {
-    duplication_backlog_handler_factory::init_singleton(group);
+    duplication_backlog_handler_factory::set_initializer(std::move(f));
+    return true;
 }
-
-} // namespace duplication
 
 } // namespace replication
 } // namespace dsn

@@ -33,6 +33,10 @@
 namespace dsn {
 namespace replication {
 
+std::unique_ptr<duplication_backlog_handler_factory> duplication_backlog_handler_factory::_instance;
+duplication_backlog_handler_factory::initializer_func
+    duplication_backlog_handler_factory::_initializer;
+
 void replica_stub::duplication_impl::duplication_sync()
 {
     if (_stub->_state == NS_Disconnected) {

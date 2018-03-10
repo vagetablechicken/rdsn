@@ -177,8 +177,8 @@ public:
                      ent.confirmed_decree);
         }
 
-        _backlog_handler = duplication::new_backlog_handler(_remote_cluster_address,
-                                                            _replica->get_app_info()->app_name);
+        _backlog_handler =
+            new_backlog_handler(_remote_cluster_address, _replica->get_app_info()->app_name);
 
         _view->confirmed_decree = ent.confirmed_decree;
         _view->status = ent.status;
