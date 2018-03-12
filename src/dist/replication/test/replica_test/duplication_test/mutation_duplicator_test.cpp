@@ -79,7 +79,8 @@ struct mutation_duplicator_test : public duplication_test_base
         dsn::blob b(std::move(s), data.length());
 
         mu->data.updates.emplace_back(mutation_update());
-        mu->data.updates.back().code = RPC_REPLICATION_WRITE_EMPTY;
+        mu->data.updates.back().code =
+            RPC_COLD_BACKUP; // whatever code it is, but never be WRITE_EMPTY
         mu->data.updates.back().data = std::move(b);
         mu->client_requests.push_back(nullptr);
 

@@ -38,3 +38,10 @@
 #define derror_f(...) derror(fmt::format(__VA_ARGS__).c_str())
 #define dfatal_f(...) dfatal(fmt::format(__VA_ARGS__).c_str())
 #define dassert_f(x, ...) dassert(x, fmt::format(__VA_ARGS__).c_str())
+
+// Macros for writing log message prefixed by gpid.
+#define dinfo_replica(...) dinfo_f("[gpid: {}]: {}", get_gpid(), fmt::format(__VA_ARGS__));
+#define ddebug_replica(...) ddebug_f("[gpid: {}]: {}", get_gpid(), fmt::format(__VA_ARGS__));
+#define dwarn_replica(...) dwarn_f("[gpid: {}]: {}", get_gpid(), fmt::format(__VA_ARGS__));
+#define derror_replica(...) derror_f("[gpid: {}]: {}", get_gpid(), fmt::format(__VA_ARGS__));
+#define dfatal_replica(...) dfatal_f("[gpid: {}]: {}", get_gpid(), fmt::format(__VA_ARGS__));

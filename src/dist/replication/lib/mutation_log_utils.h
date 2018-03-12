@@ -62,7 +62,7 @@ inline log_file_ptr open_read_or_die(const std::string &path)
     error_code ec;
     log_file_ptr file = log_file::open_read(path.c_str(), ec);
     if (ec != ERR_OK) {
-        dfatal("failed to open the log file (%s)", path.c_str());
+        dfatal("failed to open the log file (%s): ", path.c_str(), ec.to_string());
     }
     return file;
 }

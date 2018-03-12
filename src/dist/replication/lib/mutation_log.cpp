@@ -1573,7 +1573,7 @@ int mutation_log::garbage_collection(const replica_log_info_map &gc_condition,
 class log_file::file_streamer
 {
 public:
-    explicit file_streamer(dsn_handle_t fd, size_t file_offset)
+    file_streamer(dsn_handle_t fd, size_t file_offset)
         : _file_dispatched_bytes(file_offset), _file_handle(fd)
     {
         _current_buffer = _buffers + 0;
@@ -1601,6 +1601,8 @@ public:
         }
         fill_buffers();
     }
+
+    // TODO(wutao1): use string_view instead of using blob.
     // possible error_code:
     //  ERR_OK                      result would always size as expected
     //  ERR_HANDLE_EOF              if there are not enough data in file. result would still be
@@ -1618,13 +1620,16 @@ public:
         }                                                                                          \
     } while (0)
         TRY(_current_buffer->wait_ongoing_task());
+        if (_current_buffer->empty() && _next_buffer->empty()) {
+            // this may be a read attempt after ERR_HANDLE_EOF occurred.
+            return ERR_HANDLE_EOF;
+        }
         if (size < _current_buffer->length()) {
             result.assign(_current_buffer->_buffer.get(), _current_buffer->_begin, size);
             _current_buffer->_begin += size;
         } else {
             _current_buffer->drain(writer);
             // we can now assign result since writer must have allocated a buffer.
-            dassert(writer.total_size() != 0, "writer.total_size = %d", writer.total_size());
             if (size > writer.total_size()) {
                 TRY(_next_buffer->wait_ongoing_task());
                 _next_buffer->consume(writer,

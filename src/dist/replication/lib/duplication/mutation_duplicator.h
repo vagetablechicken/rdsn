@@ -79,6 +79,10 @@ public:
 typedef std::unique_ptr<duplication_view> duplication_view_u_ptr;
 
 // Each mutation_duplicator is responsible for one duplication.
+//
+// TODO(wutao1): optimize
+// Currently we create duplicator for every duplication.
+// They're isolated even if they share the same private log.
 class mutation_duplicator
 {
     struct mutation_batch
@@ -100,13 +104,12 @@ class mutation_duplicator
         {
             error_code ec = _mutation_buffer.prepare(mu, partition_status::PS_INACTIVE);
             if (ec != ERR_OK) {
-                return FMT_ERR(
-                    ERR_INVALID_DATA,
-                    "failed to add mutation into prepare list [err: {}, mutation decree: {}, "
-                    "ballot: {}]",
-                    ec,
-                    mu->get_decree(),
-                    mu->get_ballot());
+                return FMT_ERR(ERR_INVALID_DATA,
+                               "mutation_batch: failed to add mutation [err: {}, mutation decree: "
+                               "{}, ballot: {}]",
+                               ec,
+                               mu->get_decree(),
+                               mu->get_ballot());
             }
 
             while (true) {
@@ -116,14 +119,7 @@ class mutation_duplicator
                 }
                 if (popped->get_decree() <= _mutation_buffer.last_committed_decree()) {
                     for (mutation_update &update : mu->data.updates) {
-                        dsn_message_t req = from_blob_to_received_msg(
-                            update.code,
-                            update.data,
-                            0,
-                            0,
-                            dsn_msg_serialize_format(update.serialization_type));
-                        _mutations.emplace(std::make_tuple(
-                            mu->data.header.timestamp, req, std::move(update.data)));
+                        add_mutation_tuple_if_valid(update, mu->data.header.timestamp);
                     }
 
                     // update last_decree
@@ -138,6 +134,22 @@ class mutation_duplicator
                       "impossible! prepare_list has reached the capacity [gpid: {}]",
                       _duplicator->_replica->get_gpid());
             return error_s::ok();
+        }
+
+        /// \internal
+        void add_mutation_tuple_if_valid(mutation_update &update, uint64_t timestamp)
+        {
+            // ignore WRITE_MEPTY (heartbeat)
+            if (update.code == RPC_REPLICATION_WRITE_EMPTY) {
+                return;
+            }
+            dsn_message_t req =
+                from_blob_to_received_msg(update.code,
+                                          update.data,
+                                          0,
+                                          0,
+                                          dsn_msg_serialize_format(update.serialization_type));
+            _mutations.emplace(std::make_tuple(timestamp, req, std::move(update.data)));
         }
 
         // After calling this function this `batch` is guaranteed to be empty.
@@ -170,11 +182,10 @@ public:
           _view(make_unique<duplication_view>())
     {
         if (_replica->last_durable_decree() > ent.confirmed_decree) {
-            dfatal_f("the logs haven't yet duplicated were accidentally truncated [replica: "
-                     "(gpid: {}), last_durable_decree: {}, confirmed_decree: {}]",
-                     _replica->get_gpid(),
-                     _replica->last_durable_decree(),
-                     ent.confirmed_decree);
+            dfatal_replica("the logs haven't yet duplicated were accidentally truncated "
+                           "[last_durable_decree: {}, confirmed_decree: {}]",
+                           _replica->last_durable_decree(),
+                           ent.confirmed_decree);
         }
 
         _backlog_handler =
@@ -196,10 +207,8 @@ public:
     // Thread-safe
     void start()
     {
-        ddebug_f("starting duplication [dupid: {}, gpid: {}, remote: {}]",
-                 id(),
-                 _replica->get_gpid(),
-                 remote_cluster_address());
+        ddebug_replica(
+            "starting duplication [dupid: {}, remote: {}]", id(), remote_cluster_address());
 
         _paused = false;
         enqueue_start_duplication();
@@ -208,10 +217,8 @@ public:
     // Thread-safe
     void pause()
     {
-        ddebug_f("pausing duplication [dupid: {}, gpid: {}, remote: {}]",
-                 id(),
-                 _replica->get_gpid(),
-                 remote_cluster_address());
+        ddebug_replica(
+            "pausing duplication [dupid: {}, remote: {}]", id(), remote_cluster_address());
 
         _paused = true;
     }
@@ -241,6 +248,8 @@ public:
 
     // Await for all running tasks to complete.
     void wait_all() { dsn_task_tracker_wait_all(tracker()->tracker()); }
+
+    gpid get_gpid() { return _replica->get_gpid(); }
 
     /// ================================= Implementation =================================== ///
 
@@ -297,10 +306,6 @@ public:
             return;
         }
 
-        ddebug_f("duplicating mutations [last_decree: {}, file: {}]",
-                 view().last_decree,
-                 _current_log_file->path());
-
         if (_mutation_batch->empty()) {
             if (!have_more()) {
                 // wait 10 seconds for next try if no mutation was added.
@@ -345,8 +350,6 @@ public:
                                            _private_log->dir(),
                                            _current_log_file->index() + 1,
                                            _current_end_offset);
-        ddebug_f("try switching log file to: {}", new_path);
-
         bool result = false;
         if (utils::filesystem::file_exists(new_path)) {
             result = true;
@@ -357,8 +360,7 @@ public:
         if (result) {
             _current_log_file = log_utils::open_read_or_die(new_path);
             _read_from_start = true;
-
-            ddebug_f("switched log file to: {}", new_path);
+            ddebug_replica("switched log file to: {}", new_path);
         }
         return result;
     }
@@ -374,9 +376,7 @@ public:
             [this](int log_length, mutation_ptr &mu) -> bool {
                 auto es = _mutation_batch->add(log_length, std::move(mu));
                 if (!es.is_ok()) {
-                    dfatal_f("invalid mutation was found. err: {}, gpid: {}",
-                             es.description(),
-                             _replica->get_gpid());
+                    dfatal_replica("invalid mutation was found. err: {}", es.description());
                 }
                 return true;
             },
@@ -385,9 +385,9 @@ public:
 
         if (!err.is_ok()) {
             if (err.code() != ERR_HANDLE_EOF) {
-                dwarn_f("error occurred while loading mutation logs: [err: {}, file: {}]",
-                        err,
-                        log_file->path());
+                dwarn_replica("error occurred while loading mutation logs: [err: {}, file: {}]",
+                              err,
+                              log_file->path());
             }
             return false;
         } else {
@@ -412,9 +412,7 @@ public:
         }
 
         dassert(!_pending_mutations.empty(), "");
-        ddebug_f("[gpid: {}] start shipping mutations [size: {}]",
-                 _replica->get_gpid(),
-                 _pending_mutations.size());
+        ddebug_replica("start shipping mutations [size: {}]", _pending_mutations.size());
 
         mutation_tuple_set pending_mutations;
         {
@@ -444,10 +442,7 @@ public:
 
         _backlog_handler->duplicate(mut, [this, mut](error_s err) {
             if (!err.is_ok()) {
-                derror_f("[gpid: {}] failed to ship mutation: {}, timestamp: {}",
-                         _replica->get_gpid(),
-                         err,
-                         std::get<0>(mut));
+                derror_replica("failed to ship mutation: {}, timestamp: {}", err, std::get<0>(mut));
             }
 
             if (err.is_ok()) {

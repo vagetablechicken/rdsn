@@ -335,7 +335,7 @@ struct mutation_log_test : public ::testing::Test
 
             error_code ec;
             log_file_ptr file = log_file::open_read(log_file_path.c_str(), ec);
-            ASSERT_EQ(ec, ERR_OK);
+            ASSERT_EQ(ec, ERR_OK) << ec.to_string();
 
             int64_t end_offset;
             int mutation_index = -1;
@@ -482,6 +482,8 @@ TEST_F(mutation_log_test, replay_single_file_5000) { test_replay_single_file(500
 
 TEST_F(mutation_log_test, replay_single_file_10000) { test_replay_single_file(10000); }
 
+TEST_F(mutation_log_test, replay_single_file_1) { test_replay_single_file(1); }
+
 // mutation_log::open
 TEST_F(mutation_log_test, open)
 {
@@ -532,3 +534,47 @@ TEST_F(mutation_log_test, open_log_file_map_4) { test_open_log_file_map(4); }
 TEST_F(mutation_log_test, open_log_file_map_8) { test_open_log_file_map(8); }
 
 TEST_F(mutation_log_test, open_log_file_map_20) { test_open_log_file_map(20); }
+
+// Ensure that
+TEST_F(mutation_log_test, read_empty_block)
+{
+    std::string log_file_path = log_dir + "/log.1.0";
+
+    { // writing logs
+        mutation_log_ptr mlog =
+            new mutation_log_private(log_dir, 4, gpid, nullptr, 1024, 512, 10000);
+
+        EXPECT_EQ(mlog->open(nullptr, nullptr), ERR_OK);
+
+        mutation_ptr mu = create_test_mutation("hello!", 2);
+        mlog->append(mu, LPC_AIO_IMMEDIATE_CALLBACK, nullptr, nullptr, 0);
+    }
+
+    { // reading logs
+        error_code ec;
+        log_file_ptr file = log_file::open_read(log_file_path.c_str(), ec);
+        ASSERT_EQ(ec, ERR_OK);
+
+        int64_t end_offset;
+
+        // header block
+        error_s err = mutation_log::replay_block(
+            file, [](int log_length, mutation_ptr &mu) -> bool { return true; }, true, end_offset);
+        ASSERT_TRUE(err.is_ok()) << err.description();
+
+        // data block
+        err = mutation_log::replay_block(
+            file, [](int log_length, mutation_ptr &mu) -> bool { return true; }, false, end_offset);
+        ASSERT_TRUE(err.is_ok()) << err.description();
+
+        // EOF
+        err = mutation_log::replay_block(
+            file, [](int log_length, mutation_ptr &mu) -> bool { return true; }, false, end_offset);
+        ASSERT_EQ(err.code(), ERR_HANDLE_EOF) << err.description();
+
+        // read after EOF occurred
+        err = mutation_log::replay_block(
+            file, [](int log_length, mutation_ptr &mu) -> bool { return true; }, false, end_offset);
+        ASSERT_EQ(err.code(), ERR_HANDLE_EOF) << err.description();
+    }
+}
