@@ -95,27 +95,28 @@ private:
     bool _is_owner;
 };
 
+// Group-Partition-ID.
 class gpid
 {
 private:
-    dsn_gpid _value;
+    dsn_gpid _value{.value = 0};
 
 public:
-    gpid(int app_id, int pidx)
+    constexpr gpid(int app_id, int pidx) : _value({.u = {app_id, pidx}}) {}
+
+    constexpr gpid(dsn_gpid gd) // NOLINT(explicit)
+        : _value(gd)
     {
-        _value.u.app_id = app_id;
-        _value.u.partition_index = pidx;
     }
 
-    gpid(dsn_gpid gd) { _value = gd; }
-
-    gpid(const gpid &gd) { _value.value = gd._value.value; }
-
-    gpid() { _value.value = 0; }
+    constexpr gpid() = default;
 
     uint64_t value() const { return _value.value; }
 
-    operator dsn_gpid() const { return _value; }
+    operator dsn_gpid() const // NOLINT(explicit)
+    {
+        return _value;
+    }
 
     bool operator<(const gpid &r) const
     {

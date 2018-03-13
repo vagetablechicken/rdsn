@@ -59,6 +59,8 @@ typedef std::set<mutation_tuple, mutation_tuple_cmp> mutation_tuple_set;
 class duplication_backlog_handler
 {
 public:
+    explicit duplication_backlog_handler(gpid id) : _gpid(id) {}
+
     typedef std::function<void(dsn::error_s)> err_callback;
 
     /// Duplicate the provided mutation to the remote cluster.
@@ -66,6 +68,9 @@ public:
     /// \param cb: Call it when a specified mutation was sent successfully or
     ///            failed with an error.
     virtual void duplicate(mutation_tuple mutation, err_callback cb) = 0;
+
+protected:
+    gpid _gpid;
 };
 
 /// A singleton interface to get duplication_backlog_handler for specified
@@ -75,7 +80,7 @@ class duplication_backlog_handler_factory
 public:
     /// The implementation must be thread-safe.
     virtual std::unique_ptr<duplication_backlog_handler>
-    create(const std::string &remote_cluster_address, const std::string &app) = 0;
+    create(gpid id, const std::string &remote_cluster_address, const std::string &app) = 0;
 
     /// \see dsn::replication::mutation_duplicator
     static duplication_backlog_handler_factory *get_singleton() { return _instance.get(); }
@@ -97,10 +102,10 @@ private:
 
 /// \brief A helper utility of ::dsn::replication::duplication_backlog_handler_group::create.
 inline std::unique_ptr<duplication_backlog_handler>
-new_backlog_handler(const std::string &remote_cluster_address, const std::string &app)
+new_backlog_handler(gpid id, const std::string &remote_cluster_address, const std::string &app)
 {
-    return duplication_backlog_handler_factory::get_singleton()->create(remote_cluster_address,
-                                                                        app);
+    return duplication_backlog_handler_factory::get_singleton()->create(
+        id, remote_cluster_address, app);
 }
 
 /// \brief For upper-level application to register their backlog_handler_factory.

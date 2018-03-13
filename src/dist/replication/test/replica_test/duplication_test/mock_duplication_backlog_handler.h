@@ -34,6 +34,8 @@ namespace replication {
 
 struct mock_duplication_backlog_handler : public duplication_backlog_handler
 {
+    explicit mock_duplication_backlog_handler(gpid id) : duplication_backlog_handler(id) {}
+
     // thread-safe
     void duplicate(mutation_tuple mut, err_callback cb) override
     {
@@ -65,10 +67,10 @@ struct mock_duplication_backlog_handler : public duplication_backlog_handler
 
 struct mock_duplication_backlog_handler_factory : public duplication_backlog_handler_factory
 {
-    std::unique_ptr<duplication_backlog_handler> create(const std::string &remote_cluster_address,
-                                                        const std::string &app) override
+    std::unique_ptr<duplication_backlog_handler>
+    create(gpid id, const std::string &remote_cluster_address, const std::string &app) override
     {
-        return dsn::make_unique<mock_duplication_backlog_handler>();
+        return dsn::make_unique<mock_duplication_backlog_handler>(id);
     }
 };
 

@@ -26,6 +26,8 @@
 
 #pragma once
 
+#include <dsn/cpp/auto_codes.h>
+#include <dsn/utility/errors.h>
 #include <fmt/format.h>
 
 // The macros below no longer use the default snprintf method for log message formatting,
@@ -40,8 +42,32 @@
 #define dassert_f(x, ...) dassert(x, fmt::format(__VA_ARGS__).c_str())
 
 // Macros for writing log message prefixed by gpid.
-#define dinfo_replica(...) dinfo_f("[gpid: {}]: {}", get_gpid(), fmt::format(__VA_ARGS__));
-#define ddebug_replica(...) ddebug_f("[gpid: {}]: {}", get_gpid(), fmt::format(__VA_ARGS__));
-#define dwarn_replica(...) dwarn_f("[gpid: {}]: {}", get_gpid(), fmt::format(__VA_ARGS__));
-#define derror_replica(...) derror_f("[gpid: {}]: {}", get_gpid(), fmt::format(__VA_ARGS__));
-#define dfatal_replica(...) dfatal_f("[gpid: {}]: {}", get_gpid(), fmt::format(__VA_ARGS__));
+#define dinfo_replica(...) dinfo_f("[gpid: {}] {}", get_gpid(), fmt::format(__VA_ARGS__));
+#define ddebug_replica(...) ddebug_f("[gpid: {}] {}", get_gpid(), fmt::format(__VA_ARGS__));
+#define dwarn_replica(...) dwarn_f("[gpid: {}] {}", get_gpid(), fmt::format(__VA_ARGS__));
+#define derror_replica(...) derror_f("[gpid: {}] {}", get_gpid(), fmt::format(__VA_ARGS__));
+#define dfatal_replica(...) dfatal_f("[gpid: {}] {}", get_gpid(), fmt::format(__VA_ARGS__));
+
+// Customized formatter for rDSN basic types, on which
+// users can easily call fmt::format("{}", xxx), without the effort
+// of converting them into string.
+
+namespace fmt {
+
+inline void format_arg(fmt::BasicFormatter<char> &f, const char *format_str, const dsn::gpid &p)
+{
+    f.writer().write("{}.{}", p.get_app_id(), p.get_partition_index());
+}
+
+inline void format_arg(fmt::BasicFormatter<char> &f, const char *format_str, const dsn::error_s &p)
+{
+    f.writer().write(p.description());
+}
+
+inline void
+format_arg(fmt::BasicFormatter<char> &f, const char *format_str, const dsn::task_code &p)
+{
+    f.writer().write(p.to_string());
+}
+
+} // namespace fmt

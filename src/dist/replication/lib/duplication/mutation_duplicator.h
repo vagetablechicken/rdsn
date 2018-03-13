@@ -31,7 +31,7 @@
 #include <dsn/dist/replication/replication_types.h>
 #include <dsn/dist/replication/replication_app_base.h>
 #include <dsn/dist/replication/duplication_common.h>
-#include <dsn/dist/replication/fmt_utils.h>
+#include <dsn/dist/fmt_logging.h>
 #include <dsn/utility/chrono_literals.h>
 
 #include "dist/replication/lib/replica.h"
@@ -49,19 +49,12 @@ class duplication_view
 {
 public:
     // the maximum decree that's been persisted in meta server
-    decree confirmed_decree;
+    decree confirmed_decree{0};
 
     // the maximum decree that's been duplicated to remote.
-    decree last_decree;
+    decree last_decree{0};
 
-    duplication_status::type status;
-
-    duplication_view() : confirmed_decree(0), last_decree(0), status(duplication_status::DS_INIT) {}
-
-    duplication_view(const duplication_view &rhs)
-        : confirmed_decree(rhs.confirmed_decree), last_decree(rhs.last_decree), status(rhs.status)
-    {
-    }
+    duplication_status::type status{duplication_status::DS_INIT};
 
     duplication_view &set_last_decree(decree d)
     {
@@ -188,8 +181,8 @@ public:
                            ent.confirmed_decree);
         }
 
-        _backlog_handler =
-            new_backlog_handler(_remote_cluster_address, _replica->get_app_info()->app_name);
+        _backlog_handler = new_backlog_handler(
+            get_gpid(), _remote_cluster_address, _replica->get_app_info()->app_name);
 
         _view->confirmed_decree = ent.confirmed_decree;
         _view->status = ent.status;
@@ -249,16 +242,16 @@ public:
     // Await for all running tasks to complete.
     void wait_all() { dsn_task_tracker_wait_all(tracker()->tracker()); }
 
-    gpid get_gpid() { return _replica->get_gpid(); }
-
     /// ================================= Implementation =================================== ///
+
+    gpid get_gpid() { return _replica->get_gpid(); }
 
     void enqueue_start_duplication(std::chrono::milliseconds delay_ms = 0_ms)
     {
         tasking::enqueue(LPC_DUPLICATE_MUTATIONS,
                          tracker(),
                          std::bind(&mutation_duplicator::start_duplication, this),
-                         gpid_to_thread_hash(_replica->get_gpid()),
+                         0,
                          delay_ms);
     }
 
@@ -296,7 +289,7 @@ public:
         tasking::enqueue(LPC_DUPLICATE_MUTATIONS,
                          tracker(),
                          std::bind(&mutation_duplicator::do_duplicate, this),
-                         gpid_to_thread_hash(_replica->get_gpid()),
+                         0,
                          delay_ms);
     }
 
@@ -401,7 +394,7 @@ public:
         return tasking::enqueue(LPC_DUPLICATE_MUTATIONS,
                                 tracker(),
                                 std::bind(&mutation_duplicator::ship_mutations, this),
-                                gpid_to_thread_hash(_replica->get_gpid()),
+                                0,
                                 delay_ms);
     }
 
@@ -430,7 +423,7 @@ public:
         tasking::enqueue(LPC_DUPLICATE_MUTATIONS,
                          tracker(),
                          [mut, this]() { mutation_duplicator::loop_to_duplicate(mut); },
-                         gpid_to_thread_hash(_replica->get_gpid()),
+                         0,
                          delay_ms);
     }
 

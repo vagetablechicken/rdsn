@@ -25,7 +25,7 @@
  */
 
 #include <gtest/gtest.h>
-#include <dsn/dist/replication/fmt_logging.h>
+#include <dsn/dist/fmt_logging.h>
 
 #include "dist/replication/meta_server/server_load_balancer.h"
 #include "dist/replication/meta_server/meta_server_failure_detector.h"
