@@ -31,6 +31,6 @@ set(MY_PROJ_LIBS dsn_meta_server
 set(MY_BOOST_PACKAGES system filesystem)
 
 #Extra files that will be installed
-set(MY_BINPLACES config-test.ini)
+set(MY_BINPLACES config-test.ini log.1.0)
 
 dsn_add_executable()

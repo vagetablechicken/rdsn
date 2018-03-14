@@ -69,6 +69,8 @@ public:
     ///            failed with an error.
     virtual void duplicate(mutation_tuple mutation, err_callback cb) = 0;
 
+    dsn::gpid get_gpid() { return _gpid; }
+
 protected:
     gpid _gpid;
 };

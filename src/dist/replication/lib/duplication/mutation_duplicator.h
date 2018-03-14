@@ -111,8 +111,8 @@ class mutation_duplicator
                     break;
                 }
                 if (popped->get_decree() <= _mutation_buffer.last_committed_decree()) {
-                    for (mutation_update &update : mu->data.updates) {
-                        add_mutation_tuple_if_valid(update, mu->data.header.timestamp);
+                    for (mutation_update &update : popped->data.updates) {
+                        add_mutation_tuple_if_valid(update, popped->data.header.timestamp);
                     }
 
                     // update last_decree
@@ -132,7 +132,7 @@ class mutation_duplicator
         /// \internal
         void add_mutation_tuple_if_valid(mutation_update &update, uint64_t timestamp)
         {
-            // ignore WRITE_MEPTY (heartbeat)
+            // ignore WRITE_EMPTY (heartbeat)
             if (update.code == RPC_REPLICATION_WRITE_EMPTY) {
                 return;
             }
@@ -383,9 +383,9 @@ public:
                               log_file->path());
             }
             return false;
-        } else {
-            _read_from_start = false;
         }
+
+        _read_from_start = false;
         return true;
     }
 
@@ -422,7 +422,7 @@ public:
     {
         tasking::enqueue(LPC_DUPLICATE_MUTATIONS,
                          tracker(),
-                         [mut, this]() { mutation_duplicator::loop_to_duplicate(mut); },
+                         [mut, this]() { loop_to_duplicate(mut); },
                          0,
                          delay_ms);
     }

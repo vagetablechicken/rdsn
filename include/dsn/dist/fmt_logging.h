@@ -54,7 +54,7 @@
 
 namespace fmt {
 
-inline void format_arg(fmt::BasicFormatter<char> &f, const char *format_str, const dsn::gpid &p)
+inline void format_arg(fmt::BasicFormatter<char> &f, const char *format_str, dsn::gpid p)
 {
     f.writer().write("{}.{}", p.get_app_id(), p.get_partition_index());
 }
@@ -64,8 +64,12 @@ inline void format_arg(fmt::BasicFormatter<char> &f, const char *format_str, con
     f.writer().write(p.description());
 }
 
-inline void
-format_arg(fmt::BasicFormatter<char> &f, const char *format_str, const dsn::task_code &p)
+inline void format_arg(fmt::BasicFormatter<char> &f, const char *format_str, dsn::error_code p)
+{
+    f.writer().write(p.to_string());
+}
+
+inline void format_arg(fmt::BasicFormatter<char> &f, const char *format_str, dsn::task_code p)
 {
     f.writer().write(p.to_string());
 }

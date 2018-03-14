@@ -27,6 +27,15 @@
 #include "duplication_test_base.h"
 
 namespace dsn {
+namespace apps {
+
+// for loading PUT mutations from log file.
+DEFINE_TASK_CODE_RPC(RPC_RRDB_RRDB_PUT, TASK_PRIORITY_COMMON, ::dsn::THREAD_POOL_DEFAULT);
+
+} // namespace apps
+} // namespace dsn
+
+namespace dsn {
 namespace replication {
 
 struct mutation_duplicator_test : public duplication_test_base
@@ -208,6 +217,33 @@ struct mutation_duplicator_test : public duplication_test_base
         }
     }
 
+    void test_handle_real_private_log()
+    {
+        constexpr int total_writes_size = 4;
+        constexpr int total_mutations_size = 7;
+
+        utils::filesystem::rename_path("log.1.0", "test-log/log.1.0");
+
+        mutation_log_ptr mlog = new mutation_log_private(
+            replica->dir(), 4, replica->get_gpid(), nullptr, 1024, 512, 10000);
+        replica->init_private_log(mlog);
+        mlog->update_max_commit_on_disk(total_mutations_size); // assume all logs are committed.
+
+        auto duplicator = create_test_duplicator();
+        auto backlog_handler =
+            dynamic_cast<mock_duplication_backlog_handler *>(duplicator->_backlog_handler.get());
+        {
+            duplicator->start();
+
+            while (backlog_handler->get_mutation_list_safe().size() < total_writes_size) {
+                sleep(1);
+            }
+
+            duplicator->pause();
+            duplicator->wait_all();
+        }
+    }
+
     const std::string log_dir;
 
     std::unique_ptr<mock_replica> replica;
@@ -331,6 +367,10 @@ TEST_F(mutation_duplicator_test, fail_and_retry)
         return err;
     });
 }
+
+// Ensure mutation_duplicator can correctly handle real-world log file (log.1.0).
+// There are 4 puts, 3 write empties in log.1.0: PUT, PUT, PUT, EMPTY, PUT, EMPTY, EMPTY.
+TEST_F(mutation_duplicator_test, real_private_log) { test_handle_real_private_log(); }
 
 } // namespace replication
 } // namespace dsn
