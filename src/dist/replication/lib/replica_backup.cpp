@@ -169,8 +169,7 @@ void replica::send_backup_request_to_secondary(const backup_request &request)
     for (const auto &target_address : _primary_states.membership.secondaries) {
         // primary will send backup_request to secondary periodically
         // so, we shouldn't handler the response
-        rpc::call_one_way_typed(
-            target_address, RPC_COLD_BACKUP, request, gpid_to_thread_hash(get_gpid()));
+        rpc::call_one_way_typed(target_address, RPC_COLD_BACKUP, request, get_gpid().thread_hash());
     }
 }
 
@@ -405,7 +404,7 @@ void replica::generate_backup_checkpoint(cold_backup_context_ptr backup_context)
                                  backup_response response;
                                  on_cold_backup(backup_context->request, response);
                              },
-                             gpid_to_thread_hash(get_gpid()));
+                             get_gpid().thread_hash());
         } else {
             backup_context->fail_checkpoint("statistic file info under checkpoint failed");
             return;
@@ -417,7 +416,7 @@ void replica::generate_backup_checkpoint(cold_backup_context_ptr backup_context)
             LPC_REPLICATION_COLD_BACKUP,
             this,
             [this, backup_context]() { trigger_async_checkpoint_for_backup(backup_context); },
-            gpid_to_thread_hash(get_gpid()));
+            get_gpid().thread_hash());
     }
 
     // clear related but not valid checkpoint
@@ -545,7 +544,7 @@ void replica::wait_async_checkpoint_for_backup(cold_backup_context_ptr backup_co
             LPC_REPLICATION_COLD_BACKUP,
             this,
             [this, backup_context]() { trigger_async_checkpoint_for_backup(backup_context); },
-            gpid_to_thread_hash(get_gpid()),
+            get_gpid().thread_hash(),
             std::chrono::seconds(10));
     } else {
         ddebug("%s: async checkpoint done, last_durable_decree = %" PRId64
@@ -651,7 +650,7 @@ void replica::local_create_backup_checkpoint(cold_backup_context_ptr backup_cont
                              backup_response response;
                              on_cold_backup(backup_context->request, response);
                          },
-                         gpid_to_thread_hash(get_gpid()));
+                         get_gpid().thread_hash());
     }
 }
 

@@ -155,7 +155,7 @@ struct mutation_duplicator_test : public duplication_test_base
                                      duplicator->ship_mutations();
                                      duplicator->pause();
                                  },
-                                 gpid_to_thread_hash(replica->get_gpid()));
+                                 replica->get_gpid().thread_hash());
                 duplicator->wait_all();
             }
 

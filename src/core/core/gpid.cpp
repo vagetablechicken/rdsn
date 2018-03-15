@@ -23,41 +23,22 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-
-/*
- * Description:
- *     interface of the cluster scheduler that schedules a wanted deployment unit
- *     in the schedule, and notifies when failure happens.
- *
- * Revision history:
- *     2015-11-11, @imzhenyu (Zhenyu Guo), first draft
- *     xxxx-xx-xx, author, fix bug about xxx
- */
-
-#pragma once
-
-#include <dsn/service_api_cpp.h>
-#include <dsn/dist/error_code.h>
-#include <string>
-#include <functional>
-#include <memory>
-#include <dsn/dist/replication.h>
+#include <dsn/utility/fixed_size_buffer_pool.h>
+#include <dsn/tool-api/gpid.h>
+#include <cstring>
 
 namespace dsn {
-namespace dist {
-class client_load_balancer
+
+bool gpid::parse_from(const char *str)
 {
-public:
-    template <typename T>
-    static client_load_balancer *create()
-    {
-        return new T();
-    }
+    return sscanf(str, "%d.%d", &_value.u.app_id, &_value.u.partition_index) == 2;
+}
 
-    typedef client_load_balancer *(*factory)();
-
-public:
-    virtual rpc_address find_target(const ::dsn::partition_configuration &config) = 0;
-};
+static __thread fixed_size_buffer_pool<8, 64> bf;
+const char *gpid::to_string() const
+{
+    char *b = bf.next();
+    snprintf(b, bf.get_chunk_size(), "%d.%d", _value.u.app_id, _value.u.partition_index);
+    return b;
 }
 }
