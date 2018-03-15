@@ -56,10 +56,9 @@ void replica::duplication_impl::sync_duplication(const duplication_entry &ent)
     dupid_t dupid = ent.dupid;
     duplication_status::type next_status = ent.status;
 
-    mutation_duplicator_s_ptr dup = _duplications[dupid];
+    mutation_duplicator_s_ptr &dup = _duplications[dupid];
     if (dup == nullptr) {
         dup = std::make_shared<mutation_duplicator>(ent, _replica);
-        _duplications[ent.dupid] = dup;
     } else {
         if (dup->view().status == next_status) {
             return;
@@ -121,7 +120,7 @@ int64_t replica::duplication_impl::min_confirmed_decree() const
 }
 
 // Remove the duplications that are not in the `dup_list`.
-void replica::duplication_impl::remove_non_existed_duplications(
+void replica::duplication_impl::remove_non_existed_duplications(const
     std::vector<duplication_entry> &dup_list)
 {
     std::set<dupid_t> new_set;

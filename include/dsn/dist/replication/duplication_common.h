@@ -27,6 +27,7 @@
 #pragma once
 
 #include <dsn/dist/replication/replication.types.h>
+#include <dsn/dist/fmt_logging.h>
 #include <dsn/cpp/rpc_holder.h>
 #include <dsn/cpp/json_helper.h>
 #include <dsn/utility/errors.h>
@@ -82,7 +83,7 @@ inline bool json_decode(::dsn::json::string_tokenizer &in, duplication_status::t
         s = it->second;
         return true;
     }
-    dfatal("unexpected duplication_status name: \"%s\"", name.c_str());
+    dfatal_f("unexpected duplication_status name: {}", name);
     __builtin_unreachable();
 }
 

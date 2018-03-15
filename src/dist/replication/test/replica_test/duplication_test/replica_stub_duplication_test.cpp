@@ -129,7 +129,9 @@ TEST_F(replica_stub_duplication_test, update_duplication_map)
 {
     std::map<int32_t, std::vector<duplication_entry>> dup_map;
     for (int32_t appid = 1; appid <= 10; appid++) {
-        stub->add_primary_replica(appid, 1);
+        for (int partition_id = 0; partition_id < 3; partition_id++) {
+            stub->add_primary_replica(appid, partition_id);
+        }
     }
 
     { // Ensure update_duplication_map adds new duplications if they are not existed.
@@ -138,23 +140,29 @@ TEST_F(replica_stub_duplication_test, update_duplication_map)
         ent.status = duplication_status::DS_PAUSE;
         ent.confirmed_decree = 0;
 
+        // add duplication 2 for app 1, 3, 5 (of course in real world cases duplications
+        // will not be the same for different tables)
         dup_map[1].push_back(ent);
         dup_map[3].push_back(ent);
         dup_map[5].push_back(ent);
 
         dup_impl->update_duplication_map(dup_map);
 
+        for (int32_t appid : {1, 3, 5}) {
+            for (int partition_id : {0, 1, 2}) {
+                auto dup = find_dup(stub->find_replica(appid, partition_id), 2);
+                ASSERT_TRUE(dup);
+            }
+        }
+
         // update duplicated decree of 1, 3, 5 to 2
         auto dup = find_dup(stub->find_replica(1, 1), 2);
-        ASSERT_TRUE(dup);
         dup->update_state(dup->view().set_last_decree(2));
 
         dup = find_dup(stub->find_replica(3, 1), 2);
-        ASSERT_TRUE(dup);
         dup->update_state(dup->view().set_last_decree(2));
 
         dup = find_dup(stub->find_replica(5, 1), 2);
-        ASSERT_TRUE(dup);
         dup->update_state(dup->view().set_last_decree(2));
     }
 

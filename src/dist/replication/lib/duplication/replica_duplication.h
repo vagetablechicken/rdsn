@@ -59,7 +59,7 @@ public:
     // SEE: replica::on_checkpoint_timer()
     int64_t min_confirmed_decree() const;
 
-    void remove_non_existed_duplications(std::vector<duplication_entry> &);
+    void remove_non_existed_duplications(const std::vector<duplication_entry> &);
 
 private:
     friend class duplication_test_base;

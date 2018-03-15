@@ -227,11 +227,10 @@ private:
 
         ~internal()
         {
-            dsn_msg_release_ref(dsn_request);
-
             if (auto_reply) {
                 reply();
             }
+            dsn_msg_release_ref(dsn_request);
         }
 
         dsn_message_t dsn_request;

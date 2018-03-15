@@ -105,7 +105,7 @@ void replica_stub::duplication_impl::update_duplication_map(
             continue;
         }
 
-        std::vector<duplication_entry> dup_ent_list = std::move(dup_map[pid.get_app_id()]);
+        const std::vector<duplication_entry> &dup_ent_list = dup_map[pid.get_app_id()];
         for (const duplication_entry &dup_ent : dup_ent_list) {
             r->_duplication_impl->sync_duplication(dup_ent);
         }

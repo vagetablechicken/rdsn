@@ -651,7 +651,7 @@ struct duplication_confirm_entry {
 struct duplication_sync_request
 {
     // the address of of the replica server who sends this request
-    // TODO(wutao1): remove this field and get the source address from rpc framework
+    // TODO(wutao1): remove this field and get the source address by dsn_msg_from_address
     1:dsn.rpc_address                                   node;
 
     //
