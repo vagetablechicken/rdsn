@@ -140,7 +140,7 @@ TEST_F(replica_stub_duplication_test, update_duplication_map)
         ent.status = duplication_status::DS_PAUSE;
         ent.confirmed_decree = 0;
 
-        // add duplication 2 for app 1, 3, 5 (of course in real world cases duplications
+        // add duplication 2 for app 1, 3, 5 (of course in real world cases duplication
         // will not be the same for different tables)
         dup_map[1].push_back(ent);
         dup_map[3].push_back(ent);

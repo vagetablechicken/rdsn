@@ -69,7 +69,7 @@ private:
     replica *_replica;
 
     // dupid -> duplication_entity
-    std::map<dupid_t, mutation_duplicator_s_ptr> _duplications;
+    std::map<dupid_t, mutation_duplicator_u_ptr> _duplications;
 };
 
 } // namespace replication

@@ -64,6 +64,7 @@ public:
     typedef std::function<void(dsn::error_s)> err_callback;
 
     /// Duplicate the provided mutation to the remote cluster.
+    /// The implementation must be non-blocking.
     ///
     /// \param cb: Call it when a specified mutation was sent successfully or
     ///            failed with an error.

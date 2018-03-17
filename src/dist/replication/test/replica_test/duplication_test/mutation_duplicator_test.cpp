@@ -26,6 +26,10 @@
 
 #include "duplication_test_base.h"
 
+#include <dsn/utility/filesystem.h>
+
+#include "dist/replication/lib/mutation_log_utils.h"
+
 namespace dsn {
 namespace apps {
 
@@ -40,8 +44,6 @@ namespace replication {
 
 struct mutation_duplicator_test : public duplication_test_base
 {
-    using mutation_batch = mutation_duplicator::mutation_batch;
-
     mutation_duplicator_test() : duplication_test_base(), log_dir("./test-log")
     {
         stub = make_unique<replica_stub>();
@@ -310,7 +312,7 @@ TEST_F(mutation_duplicator_test, find_log_file_with_min_index)
     }
 
     auto files = log_utils::list_all_files_or_die(log_dir);
-    auto lf = mutation_duplicator::find_log_file_with_min_index(files);
+    auto lf = find_log_file_with_min_index(files);
     ASSERT_TRUE(lf != nullptr);
     ASSERT_EQ(lf->index(), 1);
 }

@@ -36,8 +36,8 @@ std::vector<duplication_confirm_entry>
 replica::duplication_impl::get_duplication_confirms_to_update() const
 {
     std::vector<duplication_confirm_entry> updates;
-    for (auto &kv : _duplications) {
-        mutation_duplicator_s_ptr duplicator = kv.second;
+    for (const auto &kv : _duplications) {
+        mutation_duplicator *duplicator = kv.second.get();
         duplication_view view = duplicator->view();
         if (view.last_decree != view.confirmed_decree) {
             duplication_confirm_entry entry;
@@ -56,9 +56,9 @@ void replica::duplication_impl::sync_duplication(const duplication_entry &ent)
     dupid_t dupid = ent.dupid;
     duplication_status::type next_status = ent.status;
 
-    mutation_duplicator_s_ptr &dup = _duplications[dupid];
+    mutation_duplicator_u_ptr &dup = _duplications[dupid];
     if (dup == nullptr) {
-        dup = std::make_shared<mutation_duplicator>(ent, _replica);
+        dup = dsn::make_unique<mutation_duplicator>(ent, _replica);
     } else {
         if (dup->view().status == next_status) {
             return;
@@ -96,8 +96,7 @@ void replica::duplication_impl::update_confirmed_points(
             continue;
         }
 
-        mutation_duplicator_s_ptr dup = it->second;
-
+        mutation_duplicator *dup = it->second.get();
         duplication_view new_state = dup->view().set_confirmed_decree(ce.confirmed_decree);
         dup->update_state(new_state);
     }
@@ -120,8 +119,8 @@ int64_t replica::duplication_impl::min_confirmed_decree() const
 }
 
 // Remove the duplications that are not in the `dup_list`.
-void replica::duplication_impl::remove_non_existed_duplications(const
-    std::vector<duplication_entry> &dup_list)
+void replica::duplication_impl::remove_non_existed_duplications(
+    const std::vector<duplication_entry> &dup_list)
 {
     std::set<dupid_t> new_set;
     std::set<dupid_t> remove_set;

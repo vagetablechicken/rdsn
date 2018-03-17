@@ -26,19 +26,11 @@
 
 #pragma once
 
-#include <dsn/cpp/clientlet.h>
-#include <dsn/cpp/message_utils.h>
-#include <dsn/dist/replication/replication_types.h>
-#include <dsn/dist/replication/replication_app_base.h>
 #include <dsn/dist/replication/duplication_common.h>
-#include <dsn/dist/fmt_logging.h>
+#include <dsn/dist/replication/duplication_backlog_handler.h>
 #include <dsn/utility/chrono_literals.h>
 
 #include "dist/replication/lib/replica.h"
-#include "dist/replication/lib/prepare_list.h"
-#include "dist/replication/lib/replica.h"
-#include "dist/replication/lib/mutation_log.h"
-#include "dist/replication/lib/mutation_log_utils.h"
 
 namespace dsn {
 namespace replication {
@@ -71,150 +63,29 @@ public:
 
 typedef std::unique_ptr<duplication_view> duplication_view_u_ptr;
 
+class mutation_loader;
+class mutation_batch;
+
 // Each mutation_duplicator is responsible for one duplication.
+// It works in THREAD_POOL_REPLICATION (LPC_DUPLICATE_MUTATIONS),
+// sharded by gpid, so that all functions are single-threaded,
+// no lock required.
 //
 // TODO(wutao1): optimize
 // Currently we create duplicator for every duplication.
 // They're isolated even if they share the same private log.
 class mutation_duplicator
 {
-    struct mutation_batch
-    {
-        static const int64_t prepare_list_num_entries = 200;
-
-        explicit mutation_batch(int64_t init_decree, mutation_duplicator *duplicator)
-            : _mutation_buffer(init_decree,
-                               prepare_list_num_entries,
-                               [](mutation_ptr &) {
-                                   // do nothing when log commit
-                               }),
-              _last_decree(0),
-              _duplicator(duplicator)
-        {
-        }
-
-        error_s add(int log_length, mutation_ptr mu)
-        {
-            error_code ec = _mutation_buffer.prepare(mu, partition_status::PS_INACTIVE);
-            if (ec != ERR_OK) {
-                return FMT_ERR(ERR_INVALID_DATA,
-                               "mutation_batch: failed to add mutation [err: {}, mutation decree: "
-                               "{}, ballot: {}]",
-                               ec,
-                               mu->get_decree(),
-                               mu->get_ballot());
-            }
-
-            while (true) {
-                mutation_ptr popped = _mutation_buffer.pop_min();
-                if (popped == nullptr) {
-                    break;
-                }
-                if (popped->get_decree() <= _mutation_buffer.last_committed_decree()) {
-                    for (mutation_update &update : popped->data.updates) {
-                        add_mutation_tuple_if_valid(update, popped->data.header.timestamp);
-                    }
-
-                    // update last_decree
-                    _last_decree = std::max(_last_decree, popped->get_decree());
-                } else {
-                    _mutation_buffer.prepare(popped, partition_status::PS_INACTIVE);
-                    break;
-                }
-            }
-
-            dassert_f(_mutation_buffer.count() < prepare_list_num_entries,
-                      "impossible! prepare_list has reached the capacity [gpid: {}]",
-                      _duplicator->_replica->get_gpid());
-            return error_s::ok();
-        }
-
-        /// \internal
-        void add_mutation_tuple_if_valid(mutation_update &update, uint64_t timestamp)
-        {
-            // ignore WRITE_EMPTY (heartbeat)
-            if (update.code == RPC_REPLICATION_WRITE_EMPTY) {
-                return;
-            }
-            dsn_message_t req =
-                from_blob_to_received_msg(update.code,
-                                          update.data,
-                                          0,
-                                          0,
-                                          dsn_msg_serialize_format(update.serialization_type));
-            _mutations.emplace(std::make_tuple(timestamp, req, std::move(update.data)));
-        }
-
-        // After calling this function this `batch` is guaranteed to be empty.
-        mutation_tuple_set move_to_mutation_tuples() { return std::move(_mutations); }
-
-        decree last_decree() const { return _last_decree; }
-
-        bool empty() const { return _mutations.empty(); }
-
-        friend class mutation_duplicator_test;
-
-        prepare_list _mutation_buffer;
-        mutation_tuple_set _mutations;
-        decree _last_decree;
-        mutation_duplicator *_duplicator;
-    };
-
-    using mutation_batch_u_ptr = std::unique_ptr<mutation_batch>;
-
 public:
-    mutation_duplicator(const duplication_entry &ent, replica *r)
-        : _id(ent.dupid),
-          _remote_cluster_address(ent.remote_address),
-          _replica(r),
-          _private_log(r->private_log()),
-          _paused(true),
-          _mutation_batch(make_unique<mutation_batch>(0, this)),
-          _current_end_offset(0),
-          _read_from_start(true),
-          _view(make_unique<duplication_view>())
-    {
-        if (_replica->last_durable_decree() > ent.confirmed_decree) {
-            dfatal_replica("the logs haven't yet duplicated were accidentally truncated "
-                           "[last_durable_decree: {}, confirmed_decree: {}]",
-                           _replica->last_durable_decree(),
-                           ent.confirmed_decree);
-        }
+    mutation_duplicator(const duplication_entry &ent, replica *r);
 
-        _backlog_handler = new_backlog_handler(
-            get_gpid(), _remote_cluster_address, _replica->get_app_info()->app_name);
-
-        _view->confirmed_decree = ent.confirmed_decree;
-        _view->status = ent.status;
-
-        // start from the last confirmed decree
-        _view->last_decree = ent.confirmed_decree;
-    }
-
-    ~mutation_duplicator()
-    {
-        pause();
-        dsn_task_tracker_wait_all(tracker()->tracker());
-    }
+    ~mutation_duplicator();
 
     // Thread-safe
-    void start()
-    {
-        ddebug_replica(
-            "starting duplication [dupid: {}, remote: {}]", id(), remote_cluster_address());
-
-        _paused = false;
-        enqueue_start_duplication();
-    }
+    void start();
 
     // Thread-safe
-    void pause()
-    {
-        ddebug_replica(
-            "pausing duplication [dupid: {}, remote: {}]", id(), remote_cluster_address());
-
-        _paused = true;
-    }
+    void pause();
 
     dupid_t id() const { return _id; }
 
@@ -236,9 +107,6 @@ public:
         _view->status = new_state.status;
     }
 
-    // Returns: the task tracker.
-    clientlet *tracker() { return &_tracker; }
-
     // Await for all running tasks to complete.
     void wait_all() { dsn_task_tracker_wait_all(tracker()->tracker()); }
 
@@ -246,42 +114,9 @@ public:
 
     gpid get_gpid() { return _replica->get_gpid(); }
 
-    void enqueue_start_duplication(std::chrono::milliseconds delay_ms = 0_ms)
+    bool have_more() const
     {
-        tasking::enqueue(LPC_DUPLICATE_MUTATIONS,
-                         tracker(),
-                         std::bind(&mutation_duplicator::start_duplication, this),
-                         0,
-                         delay_ms);
-    }
-
-    void start_duplication()
-    {
-        if (_paused) {
-            return;
-        }
-
-        std::vector<std::string> log_files = log_utils::list_all_files_or_die(_private_log->dir());
-
-        // start duplication from the first log file.
-        _current_log_file = find_log_file_with_min_index(log_files);
-        if (_current_log_file == nullptr) {
-            // wait 10 seconds if there's no private log.
-            enqueue_start_duplication(10_s);
-            return;
-        }
-
-        enqueue_do_duplication();
-    }
-
-    // RETURNS: null if there's no valid log file.
-    static log_file_ptr find_log_file_with_min_index(const std::vector<std::string> &log_files)
-    {
-        std::map<int, log_file_ptr> log_file_map = log_utils::open_log_file_map(log_files);
-        if (log_file_map.empty()) {
-            return nullptr;
-        }
-        return log_file_map.begin()->second;
+        return _replica->private_log()->max_commit_on_disk() > _view->last_decree;
     }
 
     void enqueue_do_duplication(std::chrono::milliseconds delay_ms = 0_ms)
@@ -289,197 +124,54 @@ public:
         tasking::enqueue(LPC_DUPLICATE_MUTATIONS,
                          tracker(),
                          std::bind(&mutation_duplicator::do_duplicate, this),
-                         0,
+                         get_gpid().thread_hash(),
                          delay_ms);
     }
 
-    void do_duplicate()
-    {
-        if (_paused) {
-            return;
-        }
+    void do_duplicate();
 
-        if (_mutation_batch->empty()) {
-            if (!have_more()) {
-                // wait 10 seconds for next try if no mutation was added.
-                enqueue_do_duplication(10_s);
-                return;
-            }
-
-            if (!load_mutations_from_log_file(_current_log_file)) {
-                if (try_switch_to_next_log_file()) {
-                    // read another log file.
-                    enqueue_do_duplication();
-                } else {
-                    // wait 10 sec if there're mutations written but unreadable.
-                    enqueue_do_duplication(10_s);
-                }
-                return;
-            }
-
-            if (_paused) { // check again
-                return;
-            }
-        }
-
-        if (_mutation_batch->empty()) {
-            // retry if the loaded block contains no mutation
-            enqueue_do_duplication(1_s);
-        } else {
-            start_shipping_mutation_batch();
-        }
-    }
-
-    void start_shipping_mutation_batch()
-    {
-        _pending_mutations = _mutation_batch->move_to_mutation_tuples();
-        enqueue_ship_mutations();
-    }
-
-    // Switches to the log file with index = current_log_index + 1.
-    bool try_switch_to_next_log_file()
-    {
-        std::string new_path = fmt::format("{}/log.{}.{}",
-                                           _private_log->dir(),
-                                           _current_log_file->index() + 1,
-                                           _current_end_offset);
-        bool result = false;
-        if (utils::filesystem::file_exists(new_path)) {
-            result = true;
-        } else {
-            // TODO(wutao1): edge case handling
-        }
-
-        if (result) {
-            _current_log_file = log_utils::open_read_or_die(new_path);
-            _read_from_start = true;
-            ddebug_replica("switched log file to: {}", new_path);
-        }
-        return result;
-    }
-
-    // REQUIRES: no other tasks mutating _view.
-    bool have_more() const { return _private_log->max_commit_on_disk() > _view->last_decree; }
-
-    // RETURNS: false if the operation encountered error.
-    bool load_mutations_from_log_file(log_file_ptr &log_file)
-    {
-        error_s err = mutation_log::replay_block(
-            log_file,
-            [this](int log_length, mutation_ptr &mu) -> bool {
-                auto es = _mutation_batch->add(log_length, std::move(mu));
-                if (!es.is_ok()) {
-                    dfatal_replica("invalid mutation was found. err: {}", es.description());
-                }
-                return true;
-            },
-            _read_from_start,
-            _current_end_offset);
-
-        if (!err.is_ok()) {
-            if (err.code() != ERR_HANDLE_EOF) {
-                dwarn_replica("error occurred while loading mutation logs: [err: {}, file: {}]",
-                              err,
-                              log_file->path());
-            }
-            return false;
-        }
-
-        _read_from_start = false;
-        return true;
-    }
-
-    task_ptr enqueue_ship_mutations(std::chrono::milliseconds delay_ms = 0_ms)
-    {
-        return tasking::enqueue(LPC_DUPLICATE_MUTATIONS,
-                                tracker(),
-                                std::bind(&mutation_duplicator::ship_mutations, this),
-                                0,
-                                delay_ms);
-    }
-
-    void ship_mutations()
-    {
-        if (_paused) {
-            return;
-        }
-
-        dassert(!_pending_mutations.empty(), "");
-        ddebug_replica("start shipping mutations [size: {}]", _pending_mutations.size());
-
-        mutation_tuple_set pending_mutations;
-        {
-            ::dsn::service::zauto_lock _(_pending_lock);
-            pending_mutations = _pending_mutations; // copy to prevent interleaving
-        }
-        for (const mutation_tuple &mut : pending_mutations) {
-            loop_to_duplicate(mut);
-        }
-    }
-
-    void enqueue_loop_to_duplicate(const mutation_tuple &mut,
-                                   std::chrono::milliseconds delay_ms = 0_ms)
+    void enqueue_ship_mutations(std::chrono::milliseconds delay_ms = 0_ms)
     {
         tasking::enqueue(LPC_DUPLICATE_MUTATIONS,
                          tracker(),
-                         [mut, this]() { loop_to_duplicate(mut); },
-                         0,
+                         std::bind(&mutation_duplicator::ship_mutations, this),
+                         get_gpid().thread_hash(),
                          delay_ms);
     }
 
-    void loop_to_duplicate(const mutation_tuple &mut)
+    void ship_mutations();
+
+    void enqueue_loop_to_duplicate(mutation_tuple mut, std::chrono::milliseconds delay_ms = 0_ms)
     {
-        if (_paused) {
-            return;
-        }
-
-        _backlog_handler->duplicate(mut, [this, mut](error_s err) {
-            if (!err.is_ok()) {
-                derror_replica("failed to ship mutation: {}, timestamp: {}", err, std::get<0>(mut));
-            }
-
-            if (err.is_ok()) {
-                // impose a lock here since there may have multiple tasks
-                // erasing elements in the pending set.
-                ::dsn::service::zauto_lock _(_pending_lock);
-                _pending_mutations.erase(mut);
-
-                if (_pending_mutations.empty()) {
-                    duplication_view new_state =
-                        view().set_last_decree(_mutation_batch->last_decree());
-                    update_state(new_state);
-
-                    // delay 1 second to start next duplication job
-                    enqueue_do_duplication(1_s);
-                }
-            } else {
-                // retry infinitely whenever error occurs.
-                // delay 1 sec for retry.
-                enqueue_loop_to_duplicate(mut, 1_s);
-            }
-        });
+        tasking::enqueue(LPC_DUPLICATE_MUTATIONS,
+                         tracker(),
+                         [ mut = std::move(mut), this ]() { loop_to_duplicate(mut); },
+                         get_gpid().thread_hash(),
+                         delay_ms);
     }
+
+    void loop_to_duplicate(mutation_tuple mut);
+
+private:
+    // Returns: the task tracker.
+    clientlet *tracker() { return &_tracker; }
 
 private:
     friend class mutation_duplicator_test;
+    friend class mutation_loader;
 
     const dupid_t _id;
     const std::string _remote_cluster_address;
 
     replica *_replica;
-    mutation_log_ptr _private_log;
 
-    std::atomic<bool> _paused;
+    bool _paused;
 
-    std::unique_ptr<mutation_batch> _mutation_batch;
+    std::unique_ptr<mutation_loader> _loader;
     std::unique_ptr<duplication_backlog_handler> _backlog_handler;
 
+    mutable ::dsn::service::zauto_lock _pending_lock;
     mutation_tuple_set _pending_mutations;
-    mutable ::dsn::service::zlock _pending_lock;
-
-    int64_t _current_end_offset;
-    log_file_ptr _current_log_file;
-    bool _read_from_start;
 
     // protect the access of _view.
     mutable ::dsn::service::zrwlock_nr _lock;
@@ -488,7 +180,7 @@ private:
     clientlet _tracker;
 };
 
-typedef std::shared_ptr<mutation_duplicator> mutation_duplicator_s_ptr;
+typedef std::unique_ptr<mutation_duplicator> mutation_duplicator_u_ptr;
 
 } // namespace replication
 } // namespace dsn
