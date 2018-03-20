@@ -37,6 +37,10 @@ struct replica_stub_duplication_test : public duplication_test_base
     {
         stub = dsn::make_unique<mock_replica_stub>();
         dup_impl = &stub->get_replica_stub_duplication_impl();
+
+        // for ease of testing, dup_impl is paused to avoid task continuation when function call
+        // finishes.
+        dup_impl->_paused = true;
     }
 
     void TearDown() override { stub.reset(); }
@@ -55,12 +59,11 @@ struct replica_stub_duplication_test : public duplication_test_base
         ent.dupid = 1;
         ent.remote_address = "dsn://slave-cluster";
         ent.status = duplication_status::DS_PAUSE;
-        ent.confirmed_decree = 0;
         rpc.response().dup_map[2] = {ent};
 
         dup_impl->on_duplication_sync_reply(dsn::ERR_OK, rpc);
-        mutation_duplicator_s_ptr dup =
-            stub->find_replica(2, 1)->get_replica_duplication_impl()._duplications[1];
+        mutation_duplicator *dup =
+            stub->find_replica(2, 1)->get_replica_duplication_impl()._duplications[1].get();
 
         ASSERT_TRUE(dup);
         ASSERT_EQ(dup->view().status, duplication_status::DS_PAUSE);
@@ -84,7 +87,7 @@ TEST_F(replica_stub_duplication_test, duplication_sync)
 
         duplication_entry ent;
         ent.dupid = 1;
-        auto dup = std::make_shared<mutation_duplicator>(ent, r);
+        auto dup = dsn::make_unique<mutation_duplicator>(ent, r);
         dup->update_state(dup->view().set_last_decree(1).set_confirmed_decree(2));
         add_dup(r, std::move(dup));
     }
@@ -138,7 +141,6 @@ TEST_F(replica_stub_duplication_test, update_duplication_map)
         duplication_entry ent;
         ent.dupid = 2;
         ent.status = duplication_status::DS_PAUSE;
-        ent.confirmed_decree = 0;
 
         // add duplication 2 for app 1, 3, 5 (of course in real world cases duplication
         // will not be the same for different tables)
@@ -215,7 +217,7 @@ TEST_F(replica_stub_duplication_test, update_confirmed_points)
 
         duplication_entry ent;
         ent.dupid = 1;
-        auto dup = std::make_shared<mutation_duplicator>(ent, r);
+        auto dup = dsn::make_unique<mutation_duplicator>(ent, r);
         dup->update_state(dup->view().set_last_decree(3).set_confirmed_decree(1));
         add_dup(r, std::move(dup));
     }
@@ -232,7 +234,7 @@ TEST_F(replica_stub_duplication_test, update_confirmed_points)
 
     duplication_entry ent;
     ent.dupid = 1;
-    ent.confirmed_decree = 3;
+    ent.progress[1] = 3; // app=[1,2,3], partition=1, confirmed=3
     rpc.response().dup_map[1].push_back(ent);
     rpc.response().dup_map[2].push_back(ent);
     rpc.response().dup_map[3].push_back(ent);

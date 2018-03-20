@@ -4651,18 +4651,14 @@ inline std::ostream &operator<<(std::ostream &out, const duplication_status_chan
 typedef struct _duplication_entry__isset
 {
     _duplication_entry__isset()
-        : dupid(false),
-          status(false),
-          remote_address(false),
-          create_ts(false),
-          confirmed_decree(false)
+        : dupid(false), status(false), remote_address(false), create_ts(false), progress(false)
     {
     }
     bool dupid : 1;
     bool status : 1;
     bool remote_address : 1;
     bool create_ts : 1;
-    bool confirmed_decree : 1;
+    bool progress : 1;
 } _duplication_entry__isset;
 
 class duplication_entry
@@ -4673,11 +4669,7 @@ public:
     duplication_entry &operator=(const duplication_entry &);
     duplication_entry &operator=(duplication_entry &&);
     duplication_entry()
-        : dupid(0),
-          status((duplication_status::type)0),
-          remote_address(),
-          create_ts(0),
-          confirmed_decree(0)
+        : dupid(0), status((duplication_status::type)0), remote_address(), create_ts(0)
     {
     }
 
@@ -4686,7 +4678,7 @@ public:
     duplication_status::type status;
     std::string remote_address;
     int64_t create_ts;
-    int64_t confirmed_decree;
+    std::map<int32_t, int64_t> progress;
 
     _duplication_entry__isset __isset;
 
@@ -4698,7 +4690,7 @@ public:
 
     void __set_create_ts(const int64_t val);
 
-    void __set_confirmed_decree(const int64_t val);
+    void __set_progress(const std::map<int32_t, int64_t> &val);
 
     bool operator==(const duplication_entry &rhs) const
     {
@@ -4710,7 +4702,7 @@ public:
             return false;
         if (!(create_ts == rhs.create_ts))
             return false;
-        if (!(confirmed_decree == rhs.confirmed_decree))
+        if (!(progress == rhs.progress))
             return false;
         return true;
     }

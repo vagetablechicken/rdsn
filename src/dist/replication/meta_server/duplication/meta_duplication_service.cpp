@@ -46,13 +46,33 @@ using namespace dsn::literals::chrono_literals;
 //
 // =============================================================================
 
-inline duplication_entry construct_duplication_entry(const duplication_info &dup)
+// NOT thread-safe.
+// REQUIRE read lock on `dup` and `ns` == nullptr, or
+// REQUIRE task running in THREAD_POOL_META_STATE.
+// \see meta_duplication_service::query_duplication_info
+// \see meta_duplication_service::do_get_dup_map_on_replica
+inline duplication_entry construct_duplication_entry(const duplication_info &dup,
+                                                     const node_state *ns = nullptr)
 {
     duplication_entry entry;
     entry.dupid = dup.id;
     entry.create_ts = dup.create_timestamp_ms;
     entry.remote_address = dup.remote;
-    entry.status = dup.get_status();
+    entry.status = dup.status;
+
+    if (ns != nullptr) {
+        // reduce the number of partitions piggybacked in `entry.progress`
+        ns->for_each_primary(dup.app_id, [&entry, &dup](const gpid &pid) -> bool {
+            auto it = dup.progress.find(pid.get_partition_index());
+            if (it != dup.progress.end()) {
+                entry.progress[pid.get_partition_index()] = it->second;
+            }
+            return true;
+        });
+    } else {
+        entry.progress = dup.progress;
+    }
+
     return entry;
 }
 
@@ -75,17 +95,19 @@ void meta_duplication_service::query_duplication_info(duplication_query_rpc &rpc
             response.appid = app->app_id;
             for (auto &dup_id_to_info : app->duplications) {
                 const duplication_info_s_ptr &dup = dup_id_to_info.second;
+                {
+                    zauto_read_lock dup_lock(dup->lock_unsafe());
 
-                // the removed duplication is not visible to user.
-                if (dup->status != duplication_status::DS_REMOVED) {
-                    response.entry_list.emplace_back(construct_duplication_entry(*dup));
+                    // the removed duplication is not visible to user.
+                    if (dup->status != duplication_status::DS_REMOVED) {
+                        response.entry_list.emplace_back(construct_duplication_entry(*dup));
+                    }
                 }
             }
         }
     }
 }
 
-// Lock: no lock held.
 // ThreadPool(WRITE): THREAD_POOL_META_STATE
 void meta_duplication_service::do_duplication_status_change(std::shared_ptr<app_state> app,
                                                             duplication_info_s_ptr dup,
@@ -125,7 +147,6 @@ void meta_duplication_service::do_duplication_status_change(std::shared_ptr<app_
     // store the duplication in requested status.
     blob value = dup->copy_in_status(rpc.request().status)->to_json_blob();
 
-    std::string dup_path = get_duplication_path(*app, dup->id);
     _meta_svc->get_remote_storage()->set_data(
         dup->store_path, value, LPC_META_STATE_HIGH, on_write_storage_complete, tracker());
 }
@@ -143,18 +164,14 @@ void meta_duplication_service::change_duplication_status(duplication_status_chan
 
     dupid_t dupid = request.dupid;
 
-    // must not handle the request if the app that the duplication binds to is unavailable
     std::shared_ptr<app_state> app = _state->get_app(request.app_name);
     if (!app || app->status != app_status::AS_AVAILABLE) {
         response.err = ERR_APP_NOT_EXIST;
         return;
     }
 
-    duplication_info_s_ptr dup;
-    auto kvp = app->duplications.find(dupid);
-    if (kvp != app->duplications.end()) {
-        dup = kvp->second;
-    } else {
+    duplication_info_s_ptr dup = app->duplications[dupid];
+    if (dup == nullptr) {
         response.err = ERR_OBJECT_NOT_FOUND;
         return;
     }
@@ -167,7 +184,6 @@ void meta_duplication_service::change_duplication_status(duplication_status_chan
     do_duplication_status_change(std::move(app), std::move(dup), rpc);
 }
 
-// Lock: no lock held.
 // ThreadPool(WRITE): THREAD_POOL_META_STATE
 void meta_duplication_service::do_add_duplication(std::shared_ptr<app_state> app,
                                                   duplication_info_s_ptr dup,
@@ -257,45 +273,33 @@ void meta_duplication_service::add_duplication(duplication_add_rpc rpc)
     //    if (dsn_uri_to_cluster_id(request.remote_cluster_address.c_str()) <= 0) {
     //        dwarn("invalid remote address(%s)", request.remote_cluster_address.c_str());
     //        response.err = ERR_INVALID_PARAMETERS;
+    //        return;
     //    }
-
-    if (response.err == ERR_OK) {
-        app = _state->get_app(request.app_name);
-        if (!app || app->status != app_status::AS_AVAILABLE) {
-            response.err = ERR_APP_NOT_EXIST;
-        }
-        //        else if (app->envs["value_version"] != "1") {
-        //            dwarn("unable to add duplication for %s since value_version(%s) is not \"1\"",
-        //                  request.app_name.c_str(),
-        //                  app->envs["value_version"].c_str());
-        //            response.err = ERR_INVALID_VERSION;
-        //        }
-        else {
-            duplication_info_s_ptr dup;
-            for (auto &ent : app->duplications) {
-                auto it = ent.second;
-                if (it->remote == request.remote_cluster_address &&
-                    it->status != duplication_status::DS_REMOVED) {
-                    dup = ent.second;
-                }
-            }
-
-            if (dup) {
-                ddebug_f("duplication(id: {}, remote: {}) for app({}) is added already",
-                         dup->id,
-                         dup->remote,
-                         app->app_name);
-
-                // don't create if existed.
-                response.err = ERR_OK;
-                response.dupid = dup->id;
-                response.appid = app->app_id;
-            } else {
-                dup = new_dup_from_init(request.remote_cluster_address, app.get());
-                do_create_parent_dir_before_adding_duplication(std::move(app), std::move(dup), rpc);
-            }
+    app = _state->get_app(request.app_name);
+    if (!app || app->status != app_status::AS_AVAILABLE) {
+        response.err = ERR_APP_NOT_EXIST;
+        return;
+    }
+    //        if (app->envs["value_version"] != "1") {
+    //            dwarn("unable to add duplication for %s since value_version(%s) is not \"1\"",
+    //                  request.app_name.c_str(),
+    //                  app->envs["value_version"].c_str());
+    //            response.err = ERR_INVALID_VERSION;
+    //            return;
+    //        }
+    duplication_info_s_ptr dup;
+    for (auto &ent : app->duplications) {
+        auto it = ent.second;
+        if (it->remote == request.remote_cluster_address) {
+            dup = ent.second;
+            break;
         }
     }
+    if (!dup) {
+        dup = new_dup_from_init(request.remote_cluster_address, app.get());
+    }
+
+    do_create_parent_dir_before_adding_duplication(std::move(app), std::move(dup), rpc);
 }
 
 // ThreadPool(WRITE): THREAD_POOL_META_STATE
@@ -334,10 +338,10 @@ void meta_duplication_service::duplication_sync(duplication_sync_rpc rpc)
             dup->store_path, value, LPC_META_STATE_HIGH, on_write_storage_complete, tracker());
     }
 
+    // respond immediately before state persisted.
     do_get_dup_map_on_replica(*ns, &response.dup_map);
 }
 
-// Locks: no lock held
 // ThreadPool(WRITE): THREAD_POOL_META_STATE
 void meta_duplication_service::do_update_progress_on_replica(
     const node_state &ns,
@@ -374,6 +378,8 @@ void meta_duplication_service::do_update_progress_on_replica(
 }
 
 // NOTE: dup_map never includes those apps that don't have a duplication.
+// ThreadPool(WRITE): THREAD_POOL_META_STATE
+// dup_map = map<appid, list<dup_entry>>
 void meta_duplication_service::do_get_dup_map_on_replica(
     const node_state &ns, std::map<int32_t, std::vector<duplication_entry>> *dup_map) const
 {
@@ -387,18 +393,19 @@ void meta_duplication_service::do_get_dup_map_on_replica(
         }
 
         std::shared_ptr<app_state> app = _state->get_app(pid.get_app_id());
-        dassert(app != nullptr, "");
+        dassert(app != nullptr, "server_state is inconsistent with node_state");
         if (app->duplications.empty()) {
             return true;
         }
 
+        /// ==== for each app: having primary on this node && having duplication === ///
+
         auto &dup_list_for_app = (*dup_map)[pid.get_app_id()];
         for (auto &kv : app->duplications) {
             duplication_info_s_ptr &dup = kv.second;
-
             if (dup->status == duplication_status::DS_START ||
                 dup->status == duplication_status::DS_PAUSE) {
-                dup_list_for_app.emplace_back(construct_duplication_entry(*dup));
+                dup_list_for_app.emplace_back(construct_duplication_entry(*dup, &ns));
             }
         }
         return true;
@@ -427,7 +434,7 @@ meta_duplication_service::new_dup_from_init(const std::string &remote_cluster_ad
         while (app->duplications.find(dupid) != app->duplications.end())
             dupid++;
         dup = std::make_shared<duplication_info>(
-            dupid, remote_cluster_address, get_duplication_path(*app, dupid));
+            dupid, app->app_id, remote_cluster_address, get_duplication_path(*app, dupid));
         app->duplications.emplace(dup->id, dup);
     }
 

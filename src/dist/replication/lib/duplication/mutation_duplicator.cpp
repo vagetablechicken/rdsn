@@ -45,13 +45,14 @@ mutation_duplicator::mutation_duplicator(const duplication_entry &ent, replica *
     _backlog_handler = new_backlog_handler(
         get_gpid(), _remote_cluster_address, _replica->get_app_info()->app_name);
 
-    _loader = dsn::make_unique<mutation_loader>(this);
+    auto it = ent.progress.find(get_gpid().get_partition_index());
+    if (it != ent.progress.end()) {
+        _view->last_decree = _view->confirmed_decree = it->second;
+    }
 
-    _view->confirmed_decree = ent.confirmed_decree;
     _view->status = ent.status;
 
-    // start from the last confirmed decree
-    _view->last_decree = ent.confirmed_decree;
+    _loader = dsn::make_unique<mutation_loader>(this);
 }
 
 mutation_duplicator::~mutation_duplicator()
@@ -62,19 +63,25 @@ mutation_duplicator::~mutation_duplicator()
 
 void mutation_duplicator::start()
 {
-    ddebug_replica("starting duplication [dupid: {}, remote: {}]", id(), remote_cluster_address());
+    tasking::enqueue(
+        LPC_DUPLICATE_MUTATIONS,
+        tracker(),
+        [this]() {
+            ddebug_replica(
+                "starting duplication [dupid: {}, remote: {}]", id(), remote_cluster_address());
+            decree max_gced_decree = _replica->private_log()->max_gced_decree(
+                get_gpid(), _replica->get_app()->init_info().init_offset_in_private_log);
+            if (max_gced_decree > _view->confirmed_decree) {
+                dfatal_replica("the logs haven't yet duplicated were accidentally truncated "
+                               "[last_durable_decree: {}, confirmed_decree: {}]",
+                               _replica->last_durable_decree(),
+                               _view->confirmed_decree);
+            }
 
-    decree max_gced_decree = _replica->private_log()->max_gced_decree(
-        get_gpid(), _replica->get_app()->init_info().init_offset_in_private_log);
-    if (max_gced_decree > _view->confirmed_decree) {
-        dfatal_replica("the logs haven't yet duplicated were accidentally truncated "
-                       "[last_durable_decree: {}, confirmed_decree: {}]",
-                       _replica->last_durable_decree(),
-                       _view->confirmed_decree);
-    }
-
-    _paused = false;
-    enqueue_do_duplication();
+            _paused = false;
+            enqueue_do_duplication();
+        },
+        get_gpid().thread_hash());
 }
 
 void mutation_duplicator::pause()
@@ -90,26 +97,18 @@ void mutation_duplicator::pause()
 
 void mutation_duplicator::do_duplicate()
 {
-    if (_paused) {
-        return;
-    }
-
     if (!have_more()) {
         // wait 10 seconds for next try if no mutation was added.
         enqueue_do_duplication(10_s);
         return;
     }
 
-    // will call on_mutations_loaded on success.
+    // will call ship_mutations() on success.
     _loader->load_mutations();
 }
 
 void mutation_duplicator::ship_mutations()
 {
-    if (_paused) {
-        return;
-    }
-
     mutation_tuple_set pending_mutations = _pending_mutations; // copy to prevent interleaving
     for (mutation_tuple mut : pending_mutations) {
         loop_to_duplicate(std::move(mut));
@@ -118,10 +117,6 @@ void mutation_duplicator::ship_mutations()
 
 void mutation_duplicator::loop_to_duplicate(mutation_tuple mut)
 {
-    if (_paused) {
-        return;
-    }
-
     _backlog_handler->duplicate(mut, [this, mut](error_s err) {
         if (!err.is_ok()) {
             derror_replica("failed to ship mutation: {} to {}, timestamp: {}",
@@ -137,8 +132,9 @@ void mutation_duplicator::loop_to_duplicate(mutation_tuple mut)
             _pending_mutations.erase(mut);
 
             if (_pending_mutations.empty()) {
-                duplication_view new_state = view().set_last_decree(_mutation_batch->last_decree());
+                duplication_view new_state = view().set_last_decree(_last_prepared_decree);
                 update_state(new_state);
+                _last_prepared_decree = 0;
 
                 // delay 1 second to start next duplication job
                 enqueue_do_duplication(1_s);

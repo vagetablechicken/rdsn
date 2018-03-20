@@ -24,6 +24,8 @@
  * THE SOFTWARE.
  */
 
+#pragma once
+
 #include <dsn/utility/errors.h>
 #include <dsn/utility/filesystem.h>
 
@@ -67,15 +69,6 @@ inline log_file_ptr open_read_or_die(const std::string &path)
     return file;
 }
 
-// RETURNS: null if there's no valid log file.
-inline log_file_ptr find_log_file_with_min_index(const std::vector<std::string> &log_files)
-{
-    std::map<int, log_file_ptr> log_file_map = log_utils::open_log_file_map(log_files);
-    if (log_file_map.empty()) {
-        return nullptr;
-    }
-    return log_file_map.begin()->second;
-}
 
 } // namespace log_utils
 } // namespace replication

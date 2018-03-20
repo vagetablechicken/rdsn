@@ -60,6 +60,13 @@ void replica::duplication_impl::sync_duplication(const duplication_entry &ent)
     if (dup == nullptr) {
         dup = dsn::make_unique<mutation_duplicator>(ent, _replica);
     } else {
+        auto it = ent.progress.find(_replica->get_gpid().get_partition_index());
+        if (it != ent.progress.end()) {
+            // update progress
+            duplication_view new_state = dup->view().set_confirmed_decree(it->second);
+            dup->update_state(new_state);
+        }
+
         if (dup->view().status == next_status) {
             return;
         }
@@ -71,10 +78,9 @@ void replica::duplication_impl::sync_duplication(const duplication_entry &ent)
 void replica::duplication_impl::update_duplication_status(dupid_t dupid,
                                                           duplication_status::type next_status)
 {
-    ddebug_f("changing status of duplication(dupid: {}, gpid: {}) to {}",
-             dupid,
-             _replica->get_gpid(),
-             duplication_status_to_string(next_status));
+    ddebug_replica("changing status of duplication(dupid: {}) to {}",
+                   dupid,
+                   duplication_status_to_string(next_status));
 
     mutation_duplicator *dup = _duplications[dupid].get();
 
@@ -87,27 +93,12 @@ void replica::duplication_impl::update_duplication_status(dupid_t dupid,
     }
 }
 
-void replica::duplication_impl::update_confirmed_points(
-    const std::vector<duplication_confirm_entry> &confirmed_points)
-{
-    for (const duplication_confirm_entry &ce : confirmed_points) {
-        auto it = _duplications.find(ce.dupid);
-        if (it == _duplications.end()) {
-            continue;
-        }
-
-        mutation_duplicator *dup = it->second.get();
-        duplication_view new_state = dup->view().set_confirmed_decree(ce.confirmed_decree);
-        dup->update_state(new_state);
-    }
-}
-
 int64_t replica::duplication_impl::min_confirmed_decree() const
 {
     int64_t min_decree = std::numeric_limits<int64_t>::max();
     if (_replica->status() == partition_status::PS_PRIMARY) {
         for (auto &kv : _duplications) {
-            const duplication_view &view = kv.second.get()->view();
+            const duplication_view &view = kv.second->view();
             if (view.status == duplication_status::type::DS_REMOVED) {
                 continue;
             }
@@ -119,27 +110,27 @@ int64_t replica::duplication_impl::min_confirmed_decree() const
 }
 
 // Remove the duplications that are not in the `dup_list`.
+// NOTE: this function may be blocked when destroying mutation_duplicator.
 void replica::duplication_impl::remove_non_existed_duplications(
-    const std::vector<duplication_entry> &dup_list)
+    const std::vector<duplication_entry> &new_dup_list)
 {
-    std::set<dupid_t> new_set;
-    std::set<dupid_t> remove_set;
-
-    for (const auto &dup_ent : dup_list) {
-        new_set.insert(dup_ent.dupid);
-    }
-
+    std::vector<dupid_t> removal_set;
     for (auto &pair : _duplications) {
-        dupid_t dupid = pair.first;
+        dupid_t cur_dupid = pair.first;
 
-        // if the duplication is not found in `dup_list`, remove it.
-        if (new_set.find(dupid) == new_set.end()) {
-            pair.second->pause();
-            remove_set.insert(dupid);
+        bool remove = true;
+        for (const auto &ent : new_dup_list) {
+            dupid_t new_dupid = ent.dupid;
+            if (cur_dupid == new_dupid) {
+                remove = false;
+            }
+        }
+        if (remove) {
+            removal_set.emplace_back(cur_dupid);
         }
     }
 
-    for (dupid_t dupid : remove_set) {
+    for (dupid_t dupid : removal_set) {
         _duplications.erase(dupid);
     }
 }

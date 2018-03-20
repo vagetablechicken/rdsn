@@ -42,7 +42,18 @@ using namespace dsn::literals::chrono_literals;
 class replica_stub::duplication_impl
 {
 public:
-    explicit duplication_impl(replica_stub *stub) : _stub(stub) {}
+    explicit duplication_impl(replica_stub *stub)
+        : _stub(stub),
+          _duplication_sync_interval_ms(
+              std::chrono::milliseconds(_stub->options().duplication_sync_interval_ms))
+    {
+    }
+
+    ~duplication_impl()
+    {
+        _paused = true;
+        dsn_task_tracker_wait_all(tracker()->tracker());
+    }
 
     void initialize_and_start()
     {
@@ -52,8 +63,13 @@ public:
 
     /// ================================= Implementation ============================= ///
 
+    // always running in a single task
     void enqueue_duplication_sync_timer(std::chrono::milliseconds delay_ms = 0_ms)
     {
+        if (_paused) {
+            return;
+        }
+
         tasking::enqueue(
             LPC_DUPLICATION_SYNC_TIMER, tracker(), [this]() { duplication_sync(); }, 0, delay_ms);
     }
@@ -68,10 +84,7 @@ public:
 
     void call_duplication_sync_rpc(std::unique_ptr<duplication_sync_request> req);
 
-    void update_duplication_map(std::map<int32_t, std::vector<duplication_entry>> &dup_map);
-
-    void update_confirmed_points(
-        const std::map<gpid, std::vector<duplication_confirm_entry>> &confirmed_lists);
+    void update_duplication_map(const std::map<int32_t, std::vector<duplication_entry>> &dup_map);
 
     clientlet *tracker() { return _stub; }
 
@@ -79,6 +92,9 @@ private:
     friend class replica_stub_duplication_test;
 
     replica_stub *_stub;
+    std::atomic_bool _paused{false};
+
+    const std::chrono::milliseconds _duplication_sync_interval_ms{0_ms};
 };
 
 } // namespace replication

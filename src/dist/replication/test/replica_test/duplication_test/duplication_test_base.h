@@ -27,6 +27,7 @@
 #pragma once
 
 #include <dsn/utility/smart_pointers.h>
+#include <dsn/dist/replication/replication_app_base.h>
 
 #include "dist/replication/lib/replica_stub.h"
 #include "dist/replication/lib/duplication/replica_duplication.h"
@@ -40,7 +41,9 @@ namespace replication {
 class replication_app_base_for_duplication : public replication_app_base
 {
 public:
-    replication_app_base_for_duplication(replica *replica) : replication_app_base(replica) {}
+    explicit replication_app_base_for_duplication(replica *replica) : replication_app_base(replica)
+    {
+    }
 
     ::dsn::error_code start(int argc, char **argv) override { return ERR_NOT_IMPLEMENTED; }
 
@@ -85,7 +88,7 @@ public:
     mock_replica(replica_stub *stub, gpid gpid, const app_info &app, const char *dir)
         : replica(stub, gpid, app, dir, false)
     {
-        _app.reset(new replication_app_base_for_duplication(this));
+        _app = dsn::make_unique<dsn::replication::replication_app_base_for_duplication>(this);
     }
 
     ~mock_replica() override
@@ -122,27 +125,27 @@ struct duplication_test_base : public ::testing::Test
         return make_unique<mock_replica>(stub, gpid, app_info, dir);
     }
 
-    static void add_dup(mock_replica *r, mutation_duplicator_s_ptr dup)
+    static void add_dup(mock_replica *r, mutation_duplicator_u_ptr dup)
     {
         r->get_replica_duplication_impl()._duplications[dup->id()] = std::move(dup);
     }
 
-    static mutation_duplicator_s_ptr find_dup(mock_replica *r, dupid_t dupid)
+    static mutation_duplicator *find_dup(mock_replica *r, dupid_t dupid)
     {
         auto &dup_entities = r->get_replica_duplication_impl()._duplications;
         if (dup_entities.find(dupid) == dup_entities.end()) {
             return nullptr;
         }
-        return dup_entities[dupid];
+        return dup_entities[dupid].get();
     }
 };
 
 class mock_replica_stub : public replica_stub
 {
 public:
-    mock_replica_stub() : replica_stub() {}
+    mock_replica_stub() = default;
 
-    ~mock_replica_stub() override {}
+    ~mock_replica_stub() override = default;
 
     mock_replica_stub::duplication_impl &get_replica_stub_duplication_impl()
     {

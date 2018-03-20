@@ -605,7 +605,10 @@ struct duplication_status_change_request
 struct duplication_status_change_response
 {
     // Possible errors:
-    // -
+    // - ERR_APP_NOT_EXIST: app is not found
+    // - ERR_OBJECT_NOT_FOUND: duplication is not found
+    // - ERR_BUSY: busy for updating state
+    // - ERR_INVALID_PARAMETERS: illegal request
     1:dsn.error_code   err;
     2:i32              appid;
 }
@@ -616,7 +619,9 @@ struct duplication_entry
     2:duplication_status   status;
     3:string               remote_address;
     4:i64                  create_ts;
-    6:i64                  confirmed_decree;
+
+    // partition_index => confirmed decree
+    5:map<i32, i64>        progress;
 }
 
 // This request is sent from client to meta.
@@ -628,7 +633,7 @@ struct duplication_query_request
 struct duplication_query_response
 {
     // Possible errors:
-    // -
+    // - ERR_APP_NOT_EXIST: app is not found
     1:dsn.error_code             err;
     3:i32                        appid;
     4:list<duplication_entry>    entry_list;
@@ -639,15 +644,15 @@ struct duplication_confirm_entry {
     2:i64       confirmed_decree;
 }
 
-// This is an internal RPC sent from replica to meta.
-// It's an server-level RPC.
-// The replica server periodically collects the confirm points from its replicas and
-// sends them to meta, so that clients can query through meta for the current progress
-// of a duplication. And if the primary replica crashes, the duplication can restart
-// and continue from the progress persisted on meta.
-// In addition, we also use it to sync dup-info from meta to replica regularly, we don't
-// have other rpc to do this.
-//
+// This is an internal RPC sent from replica server to meta.
+// It's a server-level RPC.
+// After starts up, the replica server periodically collects and uploads confirmed points
+// to meta server, so that clients can directly query through meta for the current progress
+// of a duplication.
+// Moreover, if a primary replica is detected to be crashed, the duplication will be restarted
+// on the new primary, continuing from the progress persisted on meta.
+// Another function of this rpc is that it synchronizes duplication metadata updates
+// (like addition or removal of duplication) between meta and replica.
 struct duplication_sync_request
 {
     // the address of of the replica server who sends this request
@@ -661,7 +666,7 @@ struct duplication_sync_request
 struct duplication_sync_response
 {
     // Possible errors:
-    // -
+    // - ERR_OBJECT_NOT_FOUND: node is not found
     1:dsn.error_code                                   err;
 
     // appid -> list<dup_entry>

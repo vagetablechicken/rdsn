@@ -44,12 +44,9 @@ struct mutation_batch
     static const int64_t prepare_list_num_entries = 200;
 
     mutation_batch()
-        : _mutation_buffer(0,
-                           prepare_list_num_entries,
-                           [](mutation_ptr &) {
-                               // do nothing when log commit
-                           }),
-          _last_decree(0)
+        : _mutation_buffer(0, prepare_list_num_entries, [](mutation_ptr &) {
+              // do nothing when log commit
+          })
     {
     }
 
@@ -79,10 +76,15 @@ struct mutation_batch
 
     prepare_list _mutation_buffer;
     mutation_tuple_set _mutations;
-    decree _last_decree;
+    decree _last_decree{0};
 };
 
 using mutation_batch_u_ptr = std::unique_ptr<mutation_batch>;
+
+// Find the log file that contains decree `d`.
+// RETURNS: null if there's no valid log file.
+extern log_file_ptr
+find_log_file_containing_decree(const std::vector<std::string> &log_files, gpid id, decree d);
 
 // Loads mutations from private log into memory.
 // It works in THREAD_POOL_REPLICATION_LONG (LPC_DUPLICATION_LOAD_MUTATIONS),
@@ -93,15 +95,28 @@ public:
     explicit mutation_loader(mutation_duplicator *duplicator)
         : _duplicator(duplicator), _private_log(duplicator->_replica->private_log())
     {
+        uint64_t group_check_interval_ms =
+            dsn_config_get_value_uint64("replication", "group_check_interval_ms", 0, "");
+        uint64_t log_private_batch_buffer_flush_interval_ms = dsn_config_get_value_uint64(
+            "replication", "log_private_batch_buffer_flush_interval_ms", 0, "");
+
+        const_cast<std::chrono::milliseconds &>(_long_delay_in_ms) = std::chrono::milliseconds(
+            2 * group_check_interval_ms + log_private_batch_buffer_flush_interval_ms);
     }
 
     /// Read a block of mutations into mutation_batch,
     /// once success it will ship them through mutation_duplicator.
+    /// This function doesn't block.
     /// \see mutation_duplicator::do_duplicate
     void load_mutations()
     {
         _paused = false;
-        enqueue_start_loading(_short_delay_in_ms);
+
+        if (_current_log_file == nullptr) {
+            enqueue_start_loading(_short_delay_in_ms);
+        } else {
+            enqueue_do_load_mutations();
+        }
     }
 
     void pause()
@@ -130,9 +145,8 @@ public:
         }
 
         std::vector<std::string> log_files = log_utils::list_all_files_or_die(_private_log->dir());
-
-        // start duplication from the first log file.
-        _current_log_file = log_utils::find_log_file_with_min_index(log_files);
+        _current_log_file = find_log_file_containing_decree(
+            log_files, get_gpid(), _duplicator->_view->confirmed_decree);
         if (_current_log_file == nullptr) {
             // wait 10 seconds if no log available.
             enqueue_start_loading(10_s);
@@ -181,9 +195,9 @@ private:
     int64_t _current_log_file_size{0};
     bool _read_from_start{true};
 
+    mutation_duplicator *_duplicator;
     mutation_log_ptr _private_log;
     mutation_batch _mutation_batch;
-    mutation_duplicator *_duplicator;
 
     // mutation_loader will take a long break (long_delay_in_ms) for loading error
     // and small log block (normally a small block indicates no writes incoming recently).
@@ -191,7 +205,7 @@ private:
     // If everything works well, it only takes a short break every time it loads up
     // a log block.
     const std::chrono::milliseconds _long_delay_in_ms{0_ms};
-    const std::chrono::milliseconds _short_delay_in_ms{0_ms};
+    const std::chrono::milliseconds _short_delay_in_ms{2_s};
 };
 
 } // namespace replication

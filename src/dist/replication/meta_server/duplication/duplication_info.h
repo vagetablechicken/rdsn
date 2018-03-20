@@ -45,15 +45,16 @@ class app_state;
 class duplication_info
 {
 public:
-    duplication_info(dupid_t dupid, std::string remote_cluster_address, std::string meta_store_path)
+    /// \see meta_duplication_service::new_dup_from_init
+    duplication_info(dupid_t dupid,
+                     int32_t appid,
+                     std::string remote_cluster_address,
+                     std::string meta_store_path)
         : id(dupid),
+          app_id(appid),
           remote(std::move(remote_cluster_address)),
           store_path(std::move(meta_store_path)),
-          create_timestamp_ms(dsn_now_ms()),
-          _is_altering(false),
-          status(duplication_status::DS_INIT),
-          next_status(duplication_status::DS_INIT),
-          last_progress_update(0)
+          create_timestamp_ms(dsn_now_ms())
     {
     }
 
@@ -72,13 +73,6 @@ public:
         next_status = duplication_status::DS_START;
     }
 
-    // Thread-Safe
-    duplication_status::type get_status() const
-    {
-        ::dsn::service::zauto_read_lock l(_lock);
-        return status;
-    }
-
     // change current status to `to`.
     // error will be returned if this state transition is not allowed.
     // Thread-Safe
@@ -94,9 +88,8 @@ public:
     void stable_status()
     {
         zauto_write_lock l(_lock);
-        if (!_is_altering)
-            return;
 
+        dassert(_is_altering, "");
         _is_altering = false;
         status = next_status;
         next_status = duplication_status::DS_INIT;
@@ -106,23 +99,22 @@ public:
     /// alter_progress -> stable_progress
     ///
 
-    // Returns: false if the progress did not advanced to `d`.
+    // Returns: false if the progress did not advance.
     // Thread-safe
     bool alter_progress(int partition_index, decree d)
     {
         zauto_write_lock l(_lock);
 
+        if (_is_altering) {
+            return false;
+        }
+
         if (progress[partition_index] < d) {
             progress[partition_index] = d;
         }
-
         if (progress[partition_index] != stored_progress[partition_index]) {
             // progress update is not supposed to be too frequent.
             if (dsn_now_ms() > last_progress_update + PROGRESS_UPDATE_PERIOD_MS) {
-                if (_is_altering) {
-                    return false;
-                }
-
                 _is_altering = true;
                 last_progress_update = dsn_now_ms();
                 return true;
@@ -135,6 +127,8 @@ public:
     void stable_progress()
     {
         zauto_write_lock l(_lock);
+
+        dassert(_is_altering, "");
         _is_altering = false;
         stored_progress = std::move(progress);
     }
@@ -171,21 +165,26 @@ public:
         return json::json_forwarder<duplication_info>::encode(*this);
     }
 
-    const dupid_t id;
+    // Acquire lock for duplication_info.
+    // This is a dangerous action, using the thread-safe methods is recommended.
+    ::dsn::service::zrwlock_nr &lock_unsafe() { return _lock; }
+
+    const dupid_t id{0};
+    const int32_t app_id{0};
     const std::string remote;
-    const std::string store_path;       // store path on meta service
-    const uint64_t create_timestamp_ms; // the time when this dup is created.
+    const std::string store_path; // store path on meta service = get_duplication_path(app, dupid)
+    const uint64_t create_timestamp_ms{0}; // the time when this dup is created.
 
 private:
     friend class duplication_info_test;
 
-    duplication_info() : id(0), create_timestamp_ms(0) {}
+    duplication_info() = default;
 
     error_code do_alter_status(duplication_status::type to);
 
-    // whether the state is changing
-    // it will be reset to false after duplication state being persisted.
-    bool _is_altering;
+    // Whether the state is changing.
+    // To ensure that there's only one task updating this duplication.
+    bool _is_altering{false};
 
     mutable ::dsn::service::zrwlock_nr _lock;
 
@@ -196,15 +195,15 @@ public:
     // json decoder. It should be noted that they are not thread-safe
     // for user.
 
-    duplication_status::type status;
-    duplication_status::type next_status;
+    duplication_status::type status{duplication_status::DS_INIT};
+    duplication_status::type next_status{duplication_status::DS_INIT};
 
     // partition index -> the decree that's been replicated to remote
     std::map<int, int64_t> progress;
     // the latest progress that's been persisted in meta-state storage
     std::map<int, int64_t> stored_progress;
     // the time of last progress update to meta-state storage
-    uint64_t last_progress_update;
+    uint64_t last_progress_update{0};
 
     DEFINE_JSON_SERIALIZATION(id, remote, status, create_timestamp_ms, progress);
 };

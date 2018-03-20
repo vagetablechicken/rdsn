@@ -65,6 +65,32 @@ error_s mutation_batch::add(mutation_ptr mu)
     return error_s::ok();
 }
 
+/*extern*/ log_file_ptr
+find_log_file_containing_decree(const std::vector<std::string> &log_files, gpid id, decree d)
+{
+    std::map<int, log_file_ptr> log_file_map = log_utils::open_log_file_map(log_files);
+    if (log_file_map.empty()) {
+        return nullptr;
+    }
+
+    dassert_f(log_file_map.begin()->second->previous_log_max_decree(id) < d,
+              "log file containing decree({}) may have been compacted",
+              d);
+
+    for (auto it = log_file_map.begin(); it != log_file_map.end(); it++) {
+        auto next_it = std::next(it);
+        if (next_it == log_file_map.end()) {
+            return it->second;
+        }
+        if (it->second->previous_log_max_decree(id) < d &&
+            d <= next_it->second->previous_log_max_decree(id)) {
+            return it->second;
+        }
+    }
+
+    __builtin_unreachable();
+}
+
 void mutation_loader::do_load_mutations()
 {
     if (_paused) {
@@ -94,8 +120,10 @@ void mutation_loader::do_load_mutations()
     // There're two cases when file size doesn't increase.
     //  1. no writes for now
     //  2. new log file is created
-    // On either cases we wait for (2 *  + flush)
-    //
+    // On either cases we wait for (2 * group_check + flush), in which there must have
+    // at least one log block (WRITE_EMPTY) flushed into file.
+    // Under this precondition it's guaranteed that whenever EOF occurred, the writing
+    // file is switched.
     if (_current_log_file_size == _current_end_offset) {
         utils::filesystem::file_size(_current_log_file->path(), _current_log_file_size);
         if (_current_log_file_size == _current_end_offset) {
@@ -110,6 +138,7 @@ void mutation_loader::do_load_mutations()
         return;
     }
 
+    _duplicator->_last_prepared_decree = _mutation_batch.last_decree();
     _duplicator->_pending_mutations = _mutation_batch.move_to_mutation_tuples();
     _duplicator->enqueue_ship_mutations();
 }
@@ -122,7 +151,6 @@ void mutation_loader::switch_to_next_log_file()
     if (utils::filesystem::file_exists(new_path)) {
         _current_log_file = log_utils::open_read_or_die(new_path);
         _read_from_start = true;
-        _current_end_offset = 0; // TODO(wutao1)
 
         ddebug_replica("switched log file to: {}", new_path);
         enqueue_do_load_mutations(_short_delay_in_ms);

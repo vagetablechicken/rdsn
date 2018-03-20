@@ -79,6 +79,10 @@ class mutation_duplicator
 public:
     mutation_duplicator(const duplication_entry &ent, replica *r);
 
+    // This is a blocking call.
+    // The thread may be seriously blocked under the destruction.
+    // Take care when it runs in THREAD_POOL_REPLICATION, though generally
+    // duplication removal is extremely rare.
     ~mutation_duplicator();
 
     // Thread-safe
@@ -107,10 +111,10 @@ public:
         _view->status = new_state.status;
     }
 
+    /// ================================= Implementation =================================== ///
+
     // Await for all running tasks to complete.
     void wait_all() { dsn_task_tracker_wait_all(tracker()->tracker()); }
-
-    /// ================================= Implementation =================================== ///
 
     gpid get_gpid() { return _replica->get_gpid(); }
 
@@ -121,6 +125,10 @@ public:
 
     void enqueue_do_duplication(std::chrono::milliseconds delay_ms = 0_ms)
     {
+        if (_paused) {
+            return;
+        }
+
         tasking::enqueue(LPC_DUPLICATE_MUTATIONS,
                          tracker(),
                          std::bind(&mutation_duplicator::do_duplicate, this),
@@ -132,6 +140,10 @@ public:
 
     void enqueue_ship_mutations(std::chrono::milliseconds delay_ms = 0_ms)
     {
+        if (_paused) {
+            return;
+        }
+
         tasking::enqueue(LPC_DUPLICATE_MUTATIONS,
                          tracker(),
                          std::bind(&mutation_duplicator::ship_mutations, this),
@@ -143,6 +155,10 @@ public:
 
     void enqueue_loop_to_duplicate(mutation_tuple mut, std::chrono::milliseconds delay_ms = 0_ms)
     {
+        if (_paused) {
+            return;
+        }
+
         tasking::enqueue(LPC_DUPLICATE_MUTATIONS,
                          tracker(),
                          [ mut = std::move(mut), this ]() { loop_to_duplicate(mut); },
@@ -154,7 +170,7 @@ public:
 
 private:
     // Returns: the task tracker.
-    clientlet *tracker() { return &_tracker; }
+    clientlet *tracker() { return _replica; }
 
 private:
     friend class mutation_duplicator_test;
@@ -172,12 +188,11 @@ private:
 
     mutable ::dsn::service::zauto_lock _pending_lock;
     mutation_tuple_set _pending_mutations;
+    decree _last_prepared_decree;
 
     // protect the access of _view.
     mutable ::dsn::service::zrwlock_nr _lock;
     duplication_view_u_ptr _view;
-
-    clientlet _tracker;
 };
 
 typedef std::unique_ptr<mutation_duplicator> mutation_duplicator_u_ptr;

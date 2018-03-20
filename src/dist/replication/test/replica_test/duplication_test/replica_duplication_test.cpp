@@ -38,7 +38,7 @@ struct replica_duplication_test : public duplication_test_base
     void test_remove_non_existed_duplications()
     {
         auto r = stub->add_primary_replica(2, 1);
-        auto d = r->get_replica_duplication_impl();
+        auto& d = r->get_replica_duplication_impl();
 
         duplication_entry ent;
         ent.dupid = 1;
@@ -63,7 +63,6 @@ struct replica_duplication_test : public duplication_test_base
 TEST_F(replica_duplication_test, get_duplication_confirms)
 {
     auto r = stub->add_primary_replica(2, 1);
-    auto d = r->get_replica_duplication_impl();
 
     int total_dup_num = 10;
     int update_dup_num = 4; // the number of dups that will be updated

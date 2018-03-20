@@ -41,8 +41,7 @@ void replica_stub::duplication_impl::duplication_sync()
 {
     if (_stub->_state == NS_Disconnected) {
         // retry if disconnected from meta server
-        enqueue_duplication_sync_timer(
-            std::chrono::milliseconds(_stub->options().duplication_sync_interval_ms));
+        enqueue_duplication_sync_timer(_duplication_sync_interval_ms);
         return;
     }
 
@@ -77,39 +76,47 @@ void replica_stub::duplication_impl::on_duplication_sync_reply(error_code err,
     ddebug("on_duplication_sync_reply");
 
     duplication_sync_response &resp = rpc.response();
-    if (resp.err != ERR_OK) {
+    if (err == ERR_OK && resp.err != ERR_OK) {
         err = resp.err;
     }
     if (err != ERR_OK) {
-        dwarn("on_duplication_sync_reply: err(%s)", err.to_string());
+        dwarn_f("on_duplication_sync_reply: err({})", err);
     } else {
         update_duplication_map(resp.dup_map);
-
-        if (!rpc.request().confirm_list.empty()) {
-            update_confirmed_points(rpc.request().confirm_list);
-        }
     }
 }
 
 // dup_map: <appid -> list<dup_entry>>
 void replica_stub::duplication_impl::update_duplication_map(
-    std::map<int32_t, std::vector<duplication_entry>> &dup_map)
+    const std::map<int32_t, std::vector<duplication_entry>> &dup_map)
 {
     zauto_read_lock l(_stub->_replicas_lock);
-
-    for (auto &ent : _stub->_replicas) {
-        gpid pid = ent.first;
-        replica_ptr r = ent.second;
+    for (auto &kv : _stub->_replicas) {
+        gpid pid = kv.first;
+        replica *r = kv.second.get();
 
         if (r->status() != partition_status::PS_PRIMARY) {
             continue;
         }
 
-        const std::vector<duplication_entry> &dup_ent_list = dup_map[pid.get_app_id()];
+        // fast path
+        if (r->_duplication_impl->is_idle()) {
+            continue;
+        }
+
+        // no duplication assigned to this app
+        auto it = dup_map.find(pid.get_app_id());
+        if (dup_map.end() == it) {
+            r->_duplication_impl->remove_all_duplications();
+            continue;
+        }
+
+        const std::vector<duplication_entry> &dup_ent_list = it->second;
+        r->_duplication_impl->remove_non_existed_duplications(dup_ent_list);
+
         for (const duplication_entry &dup_ent : dup_ent_list) {
             r->_duplication_impl->sync_duplication(dup_ent);
         }
-        r->_duplication_impl->remove_non_existed_duplications(dup_ent_list);
     }
 }
 
@@ -122,25 +129,8 @@ void replica_stub::duplication_impl::call_duplication_sync_rpc(
         on_duplication_sync_reply(err, rpc);
 
         // start a new round of synchronization
-        enqueue_duplication_sync_timer(
-            std::chrono::milliseconds(_stub->_options.duplication_sync_interval_ms));
+        enqueue_duplication_sync_timer(_duplication_sync_interval_ms);
     });
-}
-
-void replica_stub::duplication_impl::update_confirmed_points(
-    const std::map<gpid, std::vector<duplication_confirm_entry>> &confirmed_lists)
-{
-    for (auto &ent : confirmed_lists) {
-        const gpid &pid = ent.first;
-
-        auto it = _stub->_replicas.find(pid);
-        if (it == _stub->_replicas.end()) {
-            continue;
-        }
-
-        replica_ptr &r = it->second;
-        r->_duplication_impl->update_confirmed_points(ent.second);
-    }
 }
 
 } // namespace replication
