@@ -57,12 +57,16 @@ public:
     // SEE: replica::on_checkpoint_timer()
     int64_t min_confirmed_decree() const;
 
-    // Indicates that this replica is not assigned with any duplication tasks.
-    bool is_idle() { return _duplications.empty(); }
-
     void remove_non_existed_duplications(const std::vector<duplication_entry> &);
 
-    void remove_all_duplications() { _duplications.clear(); }
+    void remove_all_duplications()
+    {
+        // fast path
+        if (_duplications.empty())
+            return;
+
+        _duplications.clear();
+    }
 
     gpid get_gpid() { return _replica->get_gpid(); }
 

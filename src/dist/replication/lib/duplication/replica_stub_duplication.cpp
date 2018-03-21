@@ -99,11 +99,6 @@ void replica_stub::duplication_impl::update_duplication_map(
             continue;
         }
 
-        // fast path
-        if (r->_duplication_impl->is_idle()) {
-            continue;
-        }
-
         // no duplication assigned to this app
         auto it = dup_map.find(pid.get_app_id());
         if (dup_map.end() == it) {
@@ -111,10 +106,10 @@ void replica_stub::duplication_impl::update_duplication_map(
             continue;
         }
 
-        const std::vector<duplication_entry> &dup_ent_list = it->second;
-        r->_duplication_impl->remove_non_existed_duplications(dup_ent_list);
+        const std::vector<duplication_entry> &new_dup_list = it->second;
+        r->_duplication_impl->remove_non_existed_duplications(new_dup_list);
 
-        for (const duplication_entry &dup_ent : dup_ent_list) {
+        for (const duplication_entry &dup_ent : new_dup_list) {
             r->_duplication_impl->sync_duplication(dup_ent);
         }
     }
