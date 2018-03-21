@@ -42,7 +42,7 @@ public:
 
 TEST_F(duplication_info_test, init_and_start)
 {
-    duplication_info dup(1, "dsn://slave-cluster/temp", "/meta_test/101/duplication/1");
+    duplication_info dup(1, 1, "dsn://slave-cluster/temp", "/meta_test/101/duplication/1");
     ASSERT_FALSE(dup.is_altering());
     ASSERT_EQ(dup.status, duplication_status::DS_INIT);
     ASSERT_EQ(dup.next_status, duplication_status::DS_INIT);
@@ -55,23 +55,18 @@ TEST_F(duplication_info_test, init_and_start)
 
 TEST_F(duplication_info_test, stable_status)
 {
-    duplication_info dup(1, "dsn://slave-cluster/temp", "/meta_test/101/duplication/1");
+    duplication_info dup(1, 1, "dsn://slave-cluster/temp", "/meta_test/101/duplication/1");
     dup.start();
 
     dup.stable_status();
     ASSERT_EQ(dup.status, duplication_status::DS_START);
     ASSERT_EQ(dup.next_status, duplication_status::DS_INIT);
     ASSERT_FALSE(dup.is_altering());
-
-    // ensure that repeating stable_status won't change state.
-    dup.stable_status();
-    ASSERT_EQ(dup.status, duplication_status::DS_START);
-    ASSERT_EQ(dup.next_status, duplication_status::DS_INIT);
 }
 
 TEST_F(duplication_info_test, alter_status_when_busy)
 {
-    duplication_info dup(1, "dsn://slave-cluster/temp", "/meta_test/101/duplication/1");
+    duplication_info dup(1, 1, "dsn://slave-cluster/temp", "/meta_test/101/duplication/1");
     dup.start();
 
     ASSERT_EQ(dup.alter_status(duplication_status::DS_PAUSE), ERR_BUSY);
@@ -102,12 +97,14 @@ TEST_F(duplication_info_test, alter_status)
     };
 
     for (auto tt : tests) {
-        duplication_info dup(1, "dsn://slave-cluster/temp", "/meta_test/101/duplication/1");
+        duplication_info dup(1, 1, "dsn://slave-cluster/temp", "/meta_test/101/duplication/1");
         dup.start();
         dup.stable_status();
 
         ASSERT_EQ(dup.alter_status(tt.from), ERR_OK);
-        dup.stable_status();
+        if (dup.is_altering()) {
+            dup.stable_status();
+        }
 
         ASSERT_EQ(dup.alter_status(tt.to), tt.wec);
     }
@@ -115,7 +112,7 @@ TEST_F(duplication_info_test, alter_status)
 
 TEST_F(duplication_info_test, encode_and_decode)
 {
-    duplication_info dup(1, "dsn://slave-cluster/temp", "/meta_test/101/duplication/1");
+    duplication_info dup(1, 1, "dsn://slave-cluster/temp", "/meta_test/101/duplication/1");
     dup.start();
     dup.stable_status();
 
@@ -125,27 +122,25 @@ TEST_F(duplication_info_test, encode_and_decode)
 
 TEST_F(duplication_info_test, alter_progress)
 {
-    duplication_info dup(1, "dsn://slave-cluster/temp", "/meta_test/101/duplication/1");
+    duplication_info dup(1, 1, "dsn://slave-cluster/temp", "/meta_test/101/duplication/1");
 
     dup.alter_progress(1, 5);
     ASSERT_EQ(dup.progress[1], 5);
     ASSERT_TRUE(dup.is_altering());
 
-    // too frequent to update.
+    // busy updating
     ASSERT_FALSE(dup.alter_progress(1, 10));
-    ASSERT_EQ(dup.progress[1], 10);
+    ASSERT_EQ(dup.progress[1], 5);
     ASSERT_TRUE(dup.is_altering());
 
     dup.stable_progress();
-    ASSERT_EQ(dup.stored_progress[1], 10);
+    ASSERT_EQ(dup.stored_progress[1], 5);
     ASSERT_FALSE(dup.is_altering());
 
-    // too frequent to update.
-    ASSERT_FALSE(dup.alter_progress(1, 15));
+    // too frequent to update
+    ASSERT_FALSE(dup.alter_progress(1, 10));
     ASSERT_FALSE(dup.is_altering());
 
-    // since the progress is not stable now,
-    // the update still make sense.
     pass_progress_time_wait(&dup);
     ASSERT_TRUE(dup.alter_progress(1, 15));
     ASSERT_TRUE(dup.is_altering());

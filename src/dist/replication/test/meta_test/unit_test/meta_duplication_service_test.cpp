@@ -527,12 +527,16 @@ TEST_F(meta_duplication_service_test, re_add_duplication)
     create_app(test_app);
     auto app = find_app(test_app);
 
-    dupid_t test_dup = create_dup(test_app).dupid;
-    auto resp = change_dup_status(test_app, test_dup, duplication_status::DS_REMOVED);
+    auto test_dup = create_dup(test_app);
+    auto resp = change_dup_status(test_app, test_dup.dupid, duplication_status::DS_REMOVED);
     ASSERT_EQ(resp.err, ERR_OK);
 
-    dupid_t test_dup_2 = create_dup(test_app).dupid;
-    ASSERT_NE(test_dup, test_dup_2);
+    auto test_dup_2 = create_dup(test_app);
+
+    auto dup_list = query_dup_info(test_app).entry_list;
+    ASSERT_EQ(dup_list.size(), 1);
+    ASSERT_EQ(dup_list.begin()->status, duplication_status::DS_START);
+    ASSERT_EQ(dup_list.begin()->dupid, test_dup_2.dupid);
 }
 
 } // namespace replication
