@@ -82,9 +82,9 @@ public:
 
     rpc_holder(std::unique_ptr<TRequest> req,
                dsn::task_code code,
-               std::chrono::milliseconds timeout_milliseconds = std::chrono::milliseconds(0),
+               std::chrono::milliseconds timeout = 0_ms,
                uint64_t partition_hash = 0)
-        : _i(new internal(req, code, timeout_milliseconds, partition_hash))
+        : _i(new internal(req, code, timeout, partition_hash))
     {
     }
 
@@ -136,7 +136,7 @@ public:
                                    dsn::error_code>::value,
                       "the first argument of TCallback must be dsn::error_code");
 
-        if (_mail_box) {
+        if (dsn_unlikely(_mail_box)) {
             _mail_box->emplace_back(request());
             return nullptr;
         }

@@ -24,53 +24,22 @@
  * THE SOFTWARE.
  */
 
-#include "mutation_loader.h"
+#include "private_log_loader.h"
 
 namespace dsn {
 namespace replication {
 
-error_s mutation_batch::add(mutation_ptr mu)
-{
-    error_code ec = _mutation_buffer.prepare(mu, partition_status::PS_INACTIVE);
-    if (ec != ERR_OK) {
-        return FMT_ERR(ERR_INVALID_DATA,
-                       "mutation_batch: failed to add mutation [err: {}, mutation decree: "
-                       "{}, ballot: {}]",
-                       ec,
-                       mu->get_decree(),
-                       mu->get_ballot());
-    }
-
-    while (true) {
-        mutation_ptr popped = _mutation_buffer.pop_min();
-        if (popped == nullptr) {
-            break;
-        }
-
-        if (popped->get_decree() <= _mutation_buffer.last_committed_decree()) {
-            for (mutation_update &update : popped->data.updates) {
-                add_mutation_tuple_if_valid(update, popped->data.header.timestamp);
-            }
-
-            // update last_decree
-            _last_decree = std::max(_last_decree, popped->get_decree());
-        } else {
-            _mutation_buffer.prepare(popped, partition_status::PS_INACTIVE);
-            break;
-        }
-    }
-
-    dassert(_mutation_buffer.count() < prepare_list_num_entries,
-            "impossible! prepare_list has reached the capacity");
-    return error_s::ok();
-}
-
-/*extern*/ log_file_ptr
-find_log_file_containing_decree(const std::vector<std::string> &log_files, gpid id, decree d)
+/*static*/ log_file_ptr private_log_loader::find_log_file_containing_decree(
+    const std::vector<std::string> &log_files, gpid id, decree d)
 {
     std::map<int, log_file_ptr> log_file_map = log_utils::open_log_file_map(log_files);
     if (log_file_map.empty()) {
         return nullptr;
+    }
+
+    if (d == 0) {
+        // start from first log file if it's a new duplication.
+        return log_file_map.begin()->second;
     }
 
     dassert_f(log_file_map.begin()->second->previous_log_max_decree(id) < d,
@@ -91,12 +60,8 @@ find_log_file_containing_decree(const std::vector<std::string> &log_files, gpid 
     __builtin_unreachable();
 }
 
-void mutation_loader::do_load_mutations()
+void private_log_loader::do_load_mutations()
 {
-    if (_paused) {
-        return;
-    }
-
     error_s err = replay_log_block();
     if (!err.is_ok()) {
         // EOF appears only when end of log file is reached.
@@ -117,36 +82,22 @@ void mutation_loader::do_load_mutations()
 
     _read_from_start = false;
 
-    // There're two cases when file size doesn't increase.
-    //  1. no writes for now
-    //  2. new log file is created
-    // On either cases we wait for (2 * group_check + flush), in which there must have
-    // at least one log block (WRITE_EMPTY) flushed into file.
-    // Under this precondition it's guaranteed that whenever EOF occurred, the writing
-    // file is switched.
-    if (_current_log_file_size == _current_end_offset) {
-        utils::filesystem::file_size(_current_log_file->path(), _current_log_file_size);
-        if (_current_log_file_size == _current_end_offset) {
-            // there's no progress
-            enqueue_do_load_mutations(_long_delay_in_ms);
-            return;
-        }
-    }
-
     if (_mutation_batch.empty()) {
         enqueue_do_load_mutations(_short_delay_in_ms);
         return;
     }
 
-    _duplicator->_last_prepared_decree = _mutation_batch.last_decree();
-    _duplicator->_pending_mutations = _mutation_batch.move_to_mutation_tuples();
-    _duplicator->enqueue_ship_mutations();
+    _retriever->_last_prepared_decree = _mutation_batch.last_decree();
+    _retriever->_pending_mutations = _mutation_batch.move_to_mutation_tuples();
+    _retriever->enqueue_ship_mutations();
 }
 
-void mutation_loader::switch_to_next_log_file()
+void private_log_loader::switch_to_next_log_file()
 {
-    std::string new_path = fmt::format(
-        "{}/log.{}.{}", _private_log->dir(), _current_log_file->index() + 1, _current_end_offset);
+    std::string new_path = fmt::format("{}/log.{}.{}",
+                                       _private_log->dir(),
+                                       _current_log_file->index() + 1,
+                                       _current_global_end_offset);
 
     if (utils::filesystem::file_exists(new_path)) {
         _current_log_file = log_utils::open_read_or_die(new_path);
@@ -157,7 +108,7 @@ void mutation_loader::switch_to_next_log_file()
     } else {
         tasking::enqueue(LPC_DUPLICATION_LOAD_MUTATIONS,
                          tracker(),
-                         std::bind(&mutation_loader::switch_to_next_log_file, this),
+                         std::bind(&private_log_loader::switch_to_next_log_file, this),
                          0,
                          _long_delay_in_ms);
     }

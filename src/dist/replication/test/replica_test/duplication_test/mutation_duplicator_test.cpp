@@ -29,7 +29,7 @@
 #include <dsn/utility/filesystem.h>
 
 #include "dist/replication/lib/mutation_log_utils.h"
-#include "dist/replication/lib/duplication/mutation_loader.h"
+#include "dist/replication/lib/duplication/private_log_loader.h"
 
 namespace dsn {
 namespace apps {
@@ -151,7 +151,7 @@ struct mutation_duplicator_test : public duplication_test_base
         constexpr int total_writes_size = 4;
         constexpr int total_mutations_size = 7;
 
-        utils::filesystem::rename_path("log.1.0", "test-log/log.1.0");
+        ASSERT_TRUE(utils::filesystem::rename_path("log.1.0", "test-log/log.1.0"));
 
         mutation_log_ptr mlog = new mutation_log_private(
             replica->dir(), 4, replica->get_gpid(), nullptr, 1024, 512, 10000);
@@ -220,18 +220,19 @@ TEST_F(mutation_duplicator_test, find_log_file_containing_decree)
 
     auto files = log_utils::list_all_files_or_die(log_dir);
 
-    auto lf = find_log_file_containing_decree(files, replica->get_gpid(), 200);
-    ASSERT_TRUE(lf != nullptr);
+    auto lf = private_log_loader::find_log_file_containing_decree(files, replica->get_gpid(), 200);
+    ASSERT_TRUE(lf);
     ASSERT_EQ(lf->index(), 1);
 
-    lf = find_log_file_containing_decree(files, replica->get_gpid(), 500);
-    ASSERT_TRUE(lf != nullptr);
+    lf = private_log_loader::find_log_file_containing_decree(files, replica->get_gpid(), 500);
+    ASSERT_TRUE(lf);
     ASSERT_EQ(lf->index(), 1);
 
     std::map<int, log_file_ptr> log_file_map = log_utils::open_log_file_map(files);
     int last_idx = log_file_map.rbegin()->first;
-    lf = find_log_file_containing_decree(files, replica->get_gpid(), 1000 * 50 + 200);
-    ASSERT_TRUE(lf != nullptr);
+    lf = private_log_loader::find_log_file_containing_decree(
+        files, replica->get_gpid(), 1000 * 50 + 200);
+    ASSERT_TRUE(lf);
     ASSERT_EQ(lf->index(), last_idx);
 }
 

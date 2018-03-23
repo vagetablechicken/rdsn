@@ -63,13 +63,11 @@ public:
 
 typedef std::unique_ptr<duplication_view> duplication_view_u_ptr;
 
-class mutation_loader;
-class mutation_batch;
-
 // Each mutation_duplicator is responsible for one duplication.
 // It works in THREAD_POOL_REPLICATION (LPC_DUPLICATE_MUTATIONS),
-// sharded by gpid, so that all functions are single-threaded,
-// no lock required.
+// sharded by gpid, so, all functions are single-threaded,
+// no read lock required (of course write lock is necessary when
+// reader could be in other thread).
 //
 // TODO(wutao1): optimize
 // Currently we create duplicator for every duplication.
@@ -81,7 +79,7 @@ public:
 
     // This is a blocking call.
     // The thread may be seriously blocked under the destruction.
-    // Take care when it runs in THREAD_POOL_REPLICATION, though generally
+    // Take care when running in THREAD_POOL_REPLICATION, though
     // duplication removal is extremely rare.
     ~mutation_duplicator();
 
@@ -111,17 +109,17 @@ public:
         _view->status = new_state.status;
     }
 
+    bool have_more() const
+    {
+        return _replica->private_log()->max_commit_on_disk() > _view->last_decree;
+    }
+
     /// ================================= Implementation =================================== ///
 
     // Await for all running tasks to complete.
     void wait_all() { dsn_task_tracker_wait_all(tracker()->tracker()); }
 
     gpid get_gpid() { return _replica->get_gpid(); }
-
-    bool have_more() const
-    {
-        return _replica->private_log()->max_commit_on_disk() > _view->last_decree;
-    }
 
     void enqueue_do_duplication(std::chrono::milliseconds delay_ms = 0_ms)
     {
@@ -138,21 +136,6 @@ public:
 
     void do_duplicate();
 
-    void enqueue_ship_mutations(std::chrono::milliseconds delay_ms = 0_ms)
-    {
-        if (_paused) {
-            return;
-        }
-
-        tasking::enqueue(LPC_DUPLICATE_MUTATIONS,
-                         tracker(),
-                         std::bind(&mutation_duplicator::ship_mutations, this),
-                         get_gpid().thread_hash(),
-                         delay_ms);
-    }
-
-    void ship_mutations();
-
     void enqueue_loop_to_duplicate(mutation_tuple mut, std::chrono::milliseconds delay_ms = 0_ms)
     {
         if (_paused) {
@@ -168,13 +151,11 @@ public:
 
     void loop_to_duplicate(mutation_tuple mut);
 
-private:
     // Returns: the task tracker.
     clientlet *tracker() { return _replica; }
 
 private:
     friend class mutation_duplicator_test;
-    friend class mutation_loader;
 
     const dupid_t _id;
     const std::string _remote_cluster_address;
@@ -182,13 +163,6 @@ private:
     replica *_replica;
 
     bool _paused;
-
-    std::unique_ptr<mutation_loader> _loader;
-    std::unique_ptr<duplication_backlog_handler> _backlog_handler;
-
-    mutable ::dsn::service::zauto_lock _pending_lock;
-    mutation_tuple_set _pending_mutations;
-    decree _last_prepared_decree;
 
     // protect the access of _view.
     mutable ::dsn::service::zrwlock_nr _lock;

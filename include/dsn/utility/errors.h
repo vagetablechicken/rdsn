@@ -73,7 +73,14 @@ public:
         return error_s(code, reason);
     }
 
-    static inline error_s make(error_code code) { return make(code, ""); }
+    static inline error_s make(error_code code)
+    {
+        // fast path
+        if (code == ERR_OK) {
+            return {};
+        }
+        return make(code, "");
+    }
 
     // Return a success status.
     // This function is almost zero-cost since the returned object contains

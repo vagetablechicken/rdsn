@@ -25,7 +25,8 @@
  */
 
 #include "mutation_duplicator.h"
-#include "mutation_loader.h"
+#include "private_log_loader.h"
+#include "mutation_batch.h"
 
 #include "dist/replication/lib/replica.h"
 
@@ -51,8 +52,6 @@ mutation_duplicator::mutation_duplicator(const duplication_entry &ent, replica *
     }
 
     _view->status = ent.status;
-
-    _loader = dsn::make_unique<mutation_loader>(this);
 }
 
 mutation_duplicator::~mutation_duplicator()
@@ -86,66 +85,50 @@ void mutation_duplicator::start()
 
 void mutation_duplicator::pause()
 {
+    tasking::enqueue(
+        LPC_DUPLICATE_MUTATIONS, tracker(), [this]() { _paused = true; }, get_gpid().thread_hash());
+}
+
+void mutation_loaded_listener::notify(mutation_tuple &mu)
+{
     tasking::enqueue(LPC_DUPLICATE_MUTATIONS,
-                     tracker(),
-                     [this]() {
-                         _paused = true;
-                         _loader->pause();
+                     _duplicator->tracker(),
+                     [ this, mu = std::move(mu) ]() {
+                         for (mutation_update &update : mu->data.updates) {
+                             // ignore WRITE_EMPTY (heartbeat)
+                             if (update.code == RPC_REPLICATION_WRITE_EMPTY) {
+                                 continue;
+                             }
+
+                             dsn_message_t req = from_blob_to_received_msg(
+                                 update.code,
+                                 update.data,
+                                 0,
+                                 0,
+                                 dsn_msg_serialize_format(update.serialization_type));
+
+                             _duplicated_listener->listen(mu->get_decree());
+                         }
+
                      },
-                     get_gpid().thread_hash());
+                     _duplicator->get_gpid().thread_hash());
 }
 
-void mutation_duplicator::do_duplicate()
+void mutation_duplicated_listener::notify(decree d)
 {
-    if (!have_more()) {
-        // wait 10 seconds for next try if no mutation was added.
-        enqueue_do_duplication(10_s);
-        return;
-    }
+    _pending_mutations.erase(d);
 
-    // will call ship_mutations() on success.
-    _loader->load_mutations();
+    tasking::enqueue(LPC_DUPLICATE_MUTATIONS,
+                     _duplicator->tracker(),
+                     [this]() {
+                         if (_pending_mutations.empty()) {
+                             _duplicator->enqueue_do_duplication();
+                         }
+                     },
+                     _duplicator->get_gpid().thread_hash());
 }
 
-void mutation_duplicator::ship_mutations()
-{
-    mutation_tuple_set pending_mutations = _pending_mutations; // copy to prevent interleaving
-    for (mutation_tuple mut : pending_mutations) {
-        loop_to_duplicate(std::move(mut));
-    }
-}
-
-void mutation_duplicator::loop_to_duplicate(mutation_tuple mut)
-{
-    _backlog_handler->duplicate(mut, [this, mut](error_s err) {
-        if (!err.is_ok()) {
-            derror_replica("failed to ship mutation: {} to {}, timestamp: {}",
-                           err,
-                           remote_cluster_address(),
-                           std::get<0>(mut));
-        }
-
-        if (err.is_ok()) {
-            // impose a lock here since there may have multiple tasks
-            // erasing elements in the pending set.
-            ::dsn::service::zauto_lock _(_pending_lock);
-            _pending_mutations.erase(mut);
-
-            if (_pending_mutations.empty()) {
-                duplication_view new_state = view().set_last_decree(_last_prepared_decree);
-                update_state(new_state);
-                _last_prepared_decree = 0;
-
-                // delay 1 second to start next duplication job
-                enqueue_do_duplication(1_s);
-            }
-        } else {
-            // retry infinitely whenever error occurs.
-            // delay 1 sec for retry.
-            enqueue_loop_to_duplicate(mut, 1_s);
-        }
-    });
-}
+void mutation_duplicated_listener::listen(decree d) { _pending_mutations.insert(d); }
 
 } // namespace replication
 } // namespace dsn
