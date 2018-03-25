@@ -31,8 +31,11 @@
 #include <dsn/service_api_cpp.h>
 #include <dsn/cpp/clientlet.h>
 #include <dsn/utility/smart_pointers.h>
+#include <dsn/utility/chrono_literals.h>
 
 namespace dsn {
+
+using literals::chrono_literals::operator""_ms;
 
 //
 // rpc_holder is mainly designed for RAII of dsn_message_t.
@@ -136,7 +139,7 @@ public:
                                    dsn::error_code>::value,
                       "the first argument of TCallback must be dsn::error_code");
 
-        if (dsn_unlikely(_mail_box)) {
+        if (dsn_unlikely(_mail_box != nullptr)) {
             _mail_box->emplace_back(request());
             return nullptr;
         }

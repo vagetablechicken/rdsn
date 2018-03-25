@@ -33,61 +33,239 @@
 namespace dsn {
 namespace pipeline {
 
-struct pipeline_option
+struct pipeline_config
 {
     task_code thread_pool_code;
     clientlet *task_tracker{nullptr};
     int thread_hash{0};
 };
 
-template <typename F>
-struct segment
+// The environment for execution.
+struct environment
 {
-    using return_type = typename std::result_of<F>::type;
-    std::function<F> func;
-
-    segment(F &&f) : func(std::forward<F>(f)) {}
-
-    template <typename... Args>
-    return_type run(Args... args)
+    template <typename F>
+    void schedule(F &&f, std::chrono::milliseconds delay_ms = 0_ms)
     {
-        return func();
+        tasking::enqueue(conf.thread_pool_code,
+                         conf.task_tracker,
+                         std::forward<F>(f),
+                         conf.thread_hash,
+                         delay_ms);
+    }
+
+protected:
+    friend struct base;
+
+    template <typename Stage>
+    friend struct pipeline_node;
+
+    pipeline_config conf;
+};
+
+template <typename T>
+struct input_type
+{
+    typedef typename T::input_type type;
+};
+
+namespace traits {
+
+template <typename T>
+using input_type_t = typename input_type<T>::type;
+
+template <typename T>
+struct output_type
+{
+    typedef typename T::output_type type;
+};
+
+template <typename T>
+using output_type_t = typename output_type<T>::type;
+
+template <typename Stage, typename NextStage>
+struct pipeline_match
+{
+    static constexpr bool value = std::is_same<output_type_t<Stage>, input_type_t<NextStage>>::value
+};
+
+template <typename Stage, typename NextStage>
+static constexpr bool pipeline_match_v = pipeline_match<Stage, NextStage>::value;
+
+} // namespace traits
+
+template <typename Output>
+struct result
+{
+    typedef Output output_type;
+
+    void step_down_next_stage(Output &&out) { func(out); }
+
+    std::function<void(Output &)> func;
+};
+
+struct result_0
+{
+    typedef void output_type;
+
+    void step_down_next_stage() { func(); }
+
+    std::function<void()> func;
+};
+
+// A piece of execution, receiving argument `Input`, running in the environment
+// specified by `pipeline_config`.
+template <typename Input>
+struct when : environment
+{
+    typedef Input input_type;
+
+    virtual void run(Input &in) = 0;
+
+    void repeat(Input &in, std::chrono::milliseconds delay_ms = 0_ms)
+    {
+        schedule([ this, arg = std::move(in) ]() mutable { run(arg); }, delay_ms);
     }
 };
 
-template <typename T, typename F>
-segment<F>::return_type operator|(T &&x, segment<F> &seg)
+// A special variant of when, executing without parameters.
+struct when_0 : environment
 {
-    return seg.func(x);
-}
+    typedef void input_type;
 
-template <typename Input, typename Mid, typename Output>
-segment<Output (*)(Input)> operator|(segment<Mid(Input)> &l, segment<Output(Mid)> &r)
-{
-    return {[l, r](Input in) -> Output { return r.func(l.func(in)); }};
-}
+    virtual void run() = 0;
 
-struct pipeline_base
-{
-    pipeline_option opt;
-
-    pipeline_base &thread_pool(task_code tc)
+    void repeat(std::chrono::milliseconds delay_ms = 0_ms)
     {
-        opt.thread_pool_code = tc;
+        schedule([this]() { run(); }, delay_ms);
+    }
+};
+
+// A special variant of when.
+// Executed as when<input>, but can be called by `run()` like when_0.
+template <typename Input>
+struct when_arg : when_0
+{
+    typedef Input input_type;
+
+    void bind_arg(Input &in) { _arg = std::move(in); }
+
+    Input &get_arg() { return _arg; }
+
+    const Input &get_arg() const { return _arg; }
+
+private:
+    Input _arg;
+};
+
+// A special variant of when, which executes in parallel for each of
+// the elements of `Container`.
+template <typename Container, typename Input = typename Container::value_type>
+struct parallel_when : when<Input>
+{
+    typedef Container input_type;
+
+    void parallel_for_each(Container &c)
+    {
+        _pending = std::move(c);
+        for (Input element : _pending) {
+            when<Input>::run(element);
+        }
+    }
+
+protected:
+    Container _pending;
+};
+
+template <typename Stage>
+struct pipeline_node
+{
+    typedef traits::output_type_t<Stage> ArgType;
+
+    template <typename NextStage>
+    pipeline_node<NextStage> link(NextStage *next)
+    {
+        static_assert(traits::pipeline_match_v<Stage, NextStage>, "");
+        next->conf = this_stage->conf;
+
+        this_stage->func = [next](ArgType &args) mutable { next->run(args); };
+        return {next};
+    }
+
+    template <typename NextStage>
+    pipeline_node<NextStage> link_0(NextStage *next)
+    {
+        static_assert(traits::pipeline_match_v<Stage, NextStage>, "");
+        next->conf = this_stage->conf;
+
+        this_stage->func = [next]() mutable { next->run(); };
+        return {next};
+    }
+
+    template <typename NextStage>
+    pipeline_node<NextStage> link_parallel(NextStage *next)
+    {
+        static_assert(traits::pipeline_match_v<Stage, NextStage>, "");
+        next->conf = this_stage->conf;
+
+        this_stage->func = [next](ArgType &args) mutable { next->parallel_for_each(args); };
+        return {next};
+    }
+
+    pipeline_node(Stage *s) : this_stage(s) {}
+
+private:
+    Stage *this_stage;
+};
+
+struct base : environment
+{
+    template <typename Stage>
+    pipeline_node<Stage> from(Stage *start)
+    {
+        start->conf = conf;
+        _root_stage = start;
+        return {start};
+    }
+
+    base &thread_pool(task_code tc)
+    {
+        conf.thread_pool_code = tc;
         return *this;
     }
 
-    pipeline_base &task_tracker(clientlet *tracker)
+    base &thread_hash(int hash)
     {
-        opt.task_tracker = tracker;
+        conf.thread_hash = hash;
         return *this;
     }
 
-    pipeline_base &thread_hash(int hash)
+    base &task_tracker(clientlet *tracker)
     {
-        opt.thread_hash = hash;
+        conf.task_tracker = tracker;
         return *this;
     }
+
+    void run()
+    {
+        // run in specified thread pool
+        _root_stage->schedule([stage = static_cast<when_0 *>(_root_stage)]() {
+            // static_cast for downcast, but completely safe.
+            stage->run();
+        });
+    }
+
+    template <typename Input>
+    void run(Input &in)
+    {
+        _root_stage->schedule(
+            [ stage = static_cast<when_arg<Input> *>(_root_stage), in = std::move(in) ]() {
+                stage->bind_arg(in);
+                stage->run();
+            });
+    }
+
+private:
+    environment *_root_stage{nullptr};
 };
 
 } // namespace pipeline
