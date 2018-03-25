@@ -34,47 +34,48 @@ namespace dsn {
 namespace replication {
 
 class private_log_loader;
-class mutation_duplicator;
 
 using namespace dsn::literals::chrono_literals;
 
-struct mutation_loader : pipeline::stage<mutation_loader, mutation_shipper>
+struct load_mutation : pipeline::when_0, pipeline::result<mutation_tuple_set>
 {
-    mutation_loader(mutation_duplicator *duplicator)
+    void run() override;
+
+    /// ==== Implementation ==== ///
+
+    explicit load_mutation(mutation_duplicator *duplicator)
         : _log_in_cache(duplicator->_replica->_prepare_list),
           _start_decree(duplicator->_view->last_decree + 1)
     {
     }
 
-    void process();
-
-    /// ==== Implementation ==== ///
+    ~load_mutation();
 
     bool have_more() const
     {
         return _duplicator->_replica->private_log()->max_commit_on_disk() >= _start_decree;
     }
 
-    void add_mutation_if_valid(mutation_ptr &mu);
-
 private:
     std::unique_ptr<private_log_loader> _log_on_disk;
     prepare_list *_log_in_cache;
     decree _start_decree;
-    std::set<mutation_tuple> _loaded_mutations;
+    mutation_tuple_set _loaded_mutations;
 
     mutation_duplicator *_duplicator{nullptr};
 };
 
-struct mutation_shipper : pipeline::stage<mutation_shipper, mutation_loader>
+struct ship_mutation : pipeline::parallel_when<mutation_tuple_set>, pipeline::result_0
 {
-    void process(mutation_tuple &mutations);
+    void run(mutation_tuple &) override;
 
-    void process(std::set<mutation_tuple> &mutations)
+    /// ==== Implementation ==== ///
+
+    explicit ship_mutation(mutation_duplicator *duplicator) : _duplicator(duplicator)
     {
-        for (mutation_tuple mut : mutations) {
-            process(mut);
-        }
+        _backlog_handler = new_backlog_handler(get_gpid(),
+                                               _duplicator->remote_cluster_address(),
+                                               _duplicator->_replica->get_app_info()->app_name);
     }
 
     gpid get_gpid() { return _duplicator->get_gpid(); }
@@ -85,22 +86,20 @@ private:
     mutation_duplicator *_duplicator{nullptr};
 };
 
-struct duplication_pipeline : pipeline::pipeline_base
+struct duplication_pipeline : pipeline::base
 {
     explicit duplication_pipeline(mutation_duplicator *duplicator)
     {
         thread_pool(LPC_DUPLICATE_MUTATIONS)
             .task_tracker(duplicator->tracker())
-            .thread_hash(duplicator->get_gpid().thread_hash())
-            .from(_loader.get())
-            .link(_shipper.get())
-            .link(_loader.get());
+            .thread_hash(duplicator->get_gpid().thread_hash());
+
+        /// loop for loading when shipping finishes
+        from(_load.get()).link_parallel(_ship.get()).link_0(_load.get());
     }
 
-    void run() {}
-
-    std::unique_ptr<mutation_loader> _loader;
-    std::unique_ptr<mutation_shipper> _shipper;
+    std::unique_ptr<load_mutation> _load;
+    std::unique_ptr<ship_mutation> _ship;
 };
 
 } // namespace replication

@@ -25,6 +25,7 @@
  */
 
 #include <dsn/dist/fmt_logging.h>
+#include <dsn/cpp/message_utils.h>
 
 #include "mutation_batch.h"
 
@@ -48,11 +49,26 @@ error_s mutation_batch::add(mutation_ptr mu)
     return error_s::ok();
 }
 
-mutation_batch::mutation_batch(on_committed_mutation_callback &&cb)
-    : _on_committed_cb(std::move(cb))
+mutation_batch::mutation_batch()
 {
-    _mutation_buffer = dsn::make_unique<prepare_list>(
-        0, PREPARE_LIST_NUM_ENTRIES, [](mutation_ptr &mu) { _loaded_listener->notify(mu); });
+    _mutation_buffer =
+        dsn::make_unique<prepare_list>(0, PREPARE_LIST_NUM_ENTRIES, [this](mutation_ptr &mu) {
+            // committer
+            add_mutation_if_valid(mu, _loaded_mutations);
+        });
+}
+
+/*extern*/ void add_mutation_if_valid(mutation_ptr &mu, mutation_tuple_set &mutations)
+{
+    for (mutation_update &update : mu->data.updates) {
+        // ignore WRITE_EMPTY (heartbeat)
+        if (update.code == RPC_REPLICATION_WRITE_EMPTY) {
+            return;
+        }
+        dsn_message_t req = from_blob_to_received_msg(
+            update.code, update.data, 0, 0, dsn_msg_serialize_format(update.serialization_type));
+        mutations.emplace(std::make_tuple(mu->data.header.timestamp, req, std::move(update.data)));
+    }
 }
 
 } // namespace replication

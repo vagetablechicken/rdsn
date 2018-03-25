@@ -27,101 +27,47 @@
 #pragma once
 
 #include "mutation_duplicator.h"
+#include "mutation_batch.h"
 
 #include <dsn/cpp/message_utils.h>
+#include <dsn/cpp/pipeline.h>
 
 #include "dist/replication/lib/mutation_log_utils.h"
 #include "dist/replication/lib/prepare_list.h"
 #include "dist/replication/lib/mutation_log.h"
 #include "dist/replication/lib/replica.h"
-#include "mutation_batch.h"
 
 namespace dsn {
 namespace replication {
 
-// Loads mutations from private log into memory.
-// It works in THREAD_POOL_REPLICATION_LONG (LPC_DUPLICATION_LOAD_MUTATIONS),
-// which permits tasks to be executed in a blocking way.
 class private_log_loader
 {
 public:
     explicit private_log_loader(mutation_duplicator *duplicator) {}
 
-    /// Read a block of mutations starting from decree `d` into mutation_batch.
-    /// This function doesn't block.
-    void load_mutations_from_decree(decree d)
-    {
-        _paused = false;
-        _start_decree = d;
+    void load_mutations_from_decree(decree d) {}
+};
 
-        if (_current_log_file == nullptr) {
-            enqueue_start_loading_from_decree(d);
-        } else {
-            enqueue_do_load_mutations();
-        }
-    }
+/// Loads mutations from private log into memory.
+/// It works in THREAD_POOL_REPLICATION_LONG (LPC_DUPLICATION_LOAD_MUTATIONS),
+/// which permits tasks to be executed in a blocking way.
+class load_from_private_log : pipeline::when_arg<decree>, pipeline::result<mutation_tuple_set>
+{
+    void run() override;
 
-    void pause() { _paused = true; }
+    /// =================================== Implementation =================================== ///
 
-    /// ================================= Implementation =================================== ///
+    /// Find the log file that contains decree `d`.
+    void find_log_file_to_start(const std::vector<std::string> &log_files);
 
-    gpid get_gpid() { return; }
+    void load_from_log_file();
 
-    void enqueue_start_loading_from_decree(decree d, std::chrono::milliseconds delay_ms = 0_ms)
-    {
-        if (_paused) {
-            return;
-        }
-
-        tasking::enqueue(LPC_DUPLICATION_LOAD_MUTATIONS,
-                         tracker(),
-                         std::bind(&private_log_loader::start_loading_from_decree, this, d),
-                         0,
-                         delay_ms);
-    }
-
-    void start_loading_from_decree(decree d)
-    {
-        std::vector<std::string> log_files = log_utils::list_all_files_or_die(_private_log->dir());
-        _current_log_file = find_log_file_containing_decree(log_files, get_gpid(), d);
-        if (_current_log_file == nullptr) {
-            // wait 10 seconds if no log available.
-            enqueue_start_loading_from_decree(d, 10_s);
-            return;
-        }
-
-        _current_global_end_offset = _current_log_file->start_offset();
-
-        do_load_mutations();
-    }
-
-    // Find the log file that contains decree `d`.
-    // RETURNS: null if there's no valid log file.
-    static log_file_ptr
-    find_log_file_containing_decree(const std::vector<std::string> &log_files, gpid id, decree d);
-
-    void enqueue_do_load_mutations(std::chrono::milliseconds delay_ms = 0_ms)
-    {
-        if (_paused) {
-            return;
-        }
-
-        tasking::enqueue(LPC_DUPLICATION_LOAD_MUTATIONS,
-                         tracker(),
-                         std::bind(&private_log_loader::do_load_mutations, this),
-                         0,
-                         delay_ms);
-    }
-
-    void do_load_mutations();
-
-    // Switches to the log file with index = current_log_index + 1.
-    void switch_to_next_log_file();
+    gpid get_gpid() { return _gpid; }
 
     error_s replay_log_block()
     {
         return mutation_log::replay_block(
-            _current_log_file,
+            _current,
             [this](int log_length, mutation_ptr &mu) -> bool {
                 auto es = _mutation_batch.add(std::move(mu));
                 if (!es.is_ok()) {
@@ -133,18 +79,22 @@ public:
             _current_global_end_offset);
     }
 
-    clientlet *tracker() { return; }
+    // Switches to the log file with index = current_log_index + 1.
+    void switch_to_next_log_file();
+
+    load_from_private_log() {}
 
 private:
-    std::atomic<bool> _paused{true};
+    mutation_log *_private_log;
+    gpid _gpid;
+    private_log_loader *_loader;
 
-    int64_t _current_global_end_offset{0};
-    log_file_ptr _current_log_file;
+    log_file_ptr _current, _next;
     bool _read_from_start{true};
-    decree _start_decree{0};
+    int64_t _current_global_end_offset{0};
     mutation_batch _mutation_batch;
 
-    mutation_log_ptr _private_log;
+    decree _start_decree{0};
 };
 
 } // namespace replication

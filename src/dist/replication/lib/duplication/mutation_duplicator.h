@@ -63,6 +63,8 @@ public:
 
 typedef std::unique_ptr<duplication_view> duplication_view_u_ptr;
 
+class duplication_pipeline;
+
 // Each mutation_duplicator is responsible for one duplication.
 // It works in THREAD_POOL_REPLICATION (LPC_DUPLICATE_MUTATIONS),
 // sharded by gpid, so, all functions are single-threaded,
@@ -109,11 +111,6 @@ public:
         _view->status = new_state.status;
     }
 
-    bool have_more() const
-    {
-        return _replica->private_log()->max_commit_on_disk() > _view->last_decree;
-    }
-
     /// ================================= Implementation =================================== ///
 
     // Await for all running tasks to complete.
@@ -121,41 +118,13 @@ public:
 
     gpid get_gpid() { return _replica->get_gpid(); }
 
-    void enqueue_do_duplication(std::chrono::milliseconds delay_ms = 0_ms)
-    {
-        if (_paused) {
-            return;
-        }
-
-        tasking::enqueue(LPC_DUPLICATE_MUTATIONS,
-                         tracker(),
-                         std::bind(&mutation_duplicator::do_duplicate, this),
-                         get_gpid().thread_hash(),
-                         delay_ms);
-    }
-
-    void do_duplicate();
-
-    void enqueue_loop_to_duplicate(mutation_tuple mut, std::chrono::milliseconds delay_ms = 0_ms)
-    {
-        if (_paused) {
-            return;
-        }
-
-        tasking::enqueue(LPC_DUPLICATE_MUTATIONS,
-                         tracker(),
-                         [ mut = std::move(mut), this ]() { loop_to_duplicate(mut); },
-                         get_gpid().thread_hash(),
-                         delay_ms);
-    }
-
-    void loop_to_duplicate(mutation_tuple mut);
-
     // Returns: the task tracker.
     clientlet *tracker() { return _replica; }
 
 private:
     friend class mutation_duplicator_test;
+    friend class load_mutation;
+    friend class ship_mutation;
 
     const dupid_t _id;
     const std::string _remote_cluster_address;
@@ -163,6 +132,7 @@ private:
     replica *_replica;
 
     bool _paused;
+    std::unique_ptr<duplication_pipeline> _pipeline;
 
     // protect the access of _view.
     mutable ::dsn::service::zrwlock_nr _lock;
