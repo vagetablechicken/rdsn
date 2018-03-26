@@ -27,6 +27,7 @@
 #pragma once
 
 #include <dsn/cpp/pipeline.h>
+#include <dsn/dist/replication/duplication_backlog_handler.h>
 
 #include "mutation_duplicator.h"
 
@@ -67,7 +68,7 @@ private:
 
 struct ship_mutation : pipeline::parallel_when<mutation_tuple_set>, pipeline::result_0
 {
-    void run(mutation_tuple &) override;
+    void run(mutation_tuple &in) override;
 
     /// ==== Implementation ==== ///
 
@@ -84,22 +85,6 @@ private:
     std::unique_ptr<duplication_backlog_handler> _backlog_handler;
 
     mutation_duplicator *_duplicator{nullptr};
-};
-
-struct duplication_pipeline : pipeline::base
-{
-    explicit duplication_pipeline(mutation_duplicator *duplicator)
-    {
-        thread_pool(LPC_DUPLICATE_MUTATIONS)
-            .task_tracker(duplicator->tracker())
-            .thread_hash(duplicator->get_gpid().thread_hash());
-
-        /// loop for loading when shipping finishes
-        from(_load.get()).link_parallel(_ship.get()).link_0(_load.get());
-    }
-
-    std::unique_ptr<load_mutation> _load;
-    std::unique_ptr<ship_mutation> _ship;
 };
 
 } // namespace replication

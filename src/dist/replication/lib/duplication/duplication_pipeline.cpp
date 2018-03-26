@@ -78,6 +78,7 @@ void ship_mutation::run(mutation_tuple &mut)
             _pending.erase(mut);
 
             if (_pending.empty()) {
+                step_down_next_stage();
             }
         });
     });

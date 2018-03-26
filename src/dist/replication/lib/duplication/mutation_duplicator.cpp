@@ -46,6 +46,15 @@ mutation_duplicator::mutation_duplicator(const duplication_entry &ent, replica *
         _view->last_decree = _view->confirmed_decree = it->second;
     }
     _view->status = ent.status;
+
+    thread_pool(LPC_DUPLICATE_MUTATIONS)
+        .task_tracker(tracker())
+        .thread_hash(get_gpid().thread_hash());
+
+    // loop for loading when shipping finishes
+    _load = dsn::make_unique<load_mutation>(this);
+    _ship = dsn::make_unique<ship_mutation>(this);
+    from(_load.get()).link_parallel(_ship.get()).link_0(_load.get());
 }
 
 mutation_duplicator::~mutation_duplicator()
@@ -56,7 +65,7 @@ mutation_duplicator::~mutation_duplicator()
 
 void mutation_duplicator::start()
 {
-    _pipeline->schedule([this]() {
+    schedule([this]() {
         ddebug_replica(
             "starting duplication [dupid: {}, remote: {}]", id(), remote_cluster_address());
         decree max_gced_decree = _replica->private_log()->max_gced_decree(
@@ -69,13 +78,13 @@ void mutation_duplicator::start()
         }
 
         _paused = false;
-        _pipeline->run();
+        run();
     });
 }
 
 void mutation_duplicator::pause()
 {
-    _pipeline->schedule([this]() { _paused = true; });
+    schedule([this]() { _paused = true; });
 }
 
 } // namespace replication

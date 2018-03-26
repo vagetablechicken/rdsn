@@ -62,13 +62,13 @@ protected:
     pipeline_config conf;
 };
 
+namespace traits {
+
 template <typename T>
 struct input_type
 {
     typedef typename T::input_type type;
 };
-
-namespace traits {
 
 template <typename T>
 using input_type_t = typename input_type<T>::type;
@@ -227,28 +227,9 @@ struct base : environment
         return {start};
     }
 
-    base &thread_pool(task_code tc)
-    {
-        conf.thread_pool_code = tc;
-        return *this;
-    }
-
-    base &thread_hash(int hash)
-    {
-        conf.thread_hash = hash;
-        return *this;
-    }
-
-    base &task_tracker(clientlet *tracker)
-    {
-        conf.task_tracker = tracker;
-        return *this;
-    }
-
     void run()
     {
-        // run in specified thread pool
-        _root_stage->schedule([stage = static_cast<when_0 *>(_root_stage)]() {
+        schedule([stage = static_cast<when_0 *>(_root_stage)]() {
             // static_cast for downcast, but completely safe.
             stage->run();
         });
@@ -257,11 +238,31 @@ struct base : environment
     template <typename Input>
     void run(Input &in)
     {
-        _root_stage->schedule(
-            [ stage = static_cast<when_arg<Input> *>(_root_stage), in = std::move(in) ]() {
-                stage->bind_arg(in);
-                stage->run();
-            });
+        schedule([ stage = static_cast<when_arg<Input> *>(_root_stage), in = std::move(in) ]() {
+            stage->bind_arg(in);
+            stage->run();
+        });
+    }
+
+    // Await for all running tasks to complete.
+    void wait_all() { dsn_task_tracker_wait_all(conf.task_tracker->tracker()); }
+
+    /// === Environment Configuration === ///
+
+    base &thread_pool(task_code tc)
+    {
+        conf.thread_pool_code = tc;
+        return *this;
+    }
+    base &thread_hash(int hash)
+    {
+        conf.thread_hash = hash;
+        return *this;
+    }
+    base &task_tracker(clientlet *tracker)
+    {
+        conf.task_tracker = tracker;
+        return *this;
     }
 
 private:

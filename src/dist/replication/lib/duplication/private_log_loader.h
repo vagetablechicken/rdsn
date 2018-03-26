@@ -40,12 +40,12 @@
 namespace dsn {
 namespace replication {
 
-class private_log_loader
+class private_log_loader : pipeline::base
 {
-public:
-    explicit private_log_loader(mutation_duplicator *duplicator) {}
+    private_log_loader() { from(_load.get()).link(); }
 
-    void load_mutations_from_decree(decree d) {}
+public:
+    std::unique_ptr<load_from_private_log> _load;
 };
 
 /// Loads mutations from private log into memory.
@@ -82,12 +82,13 @@ class load_from_private_log : pipeline::when_arg<decree>, pipeline::result<mutat
     // Switches to the log file with index = current_log_index + 1.
     void switch_to_next_log_file();
 
-    load_from_private_log() {}
+    explicit load_from_private_log(mutation_duplicator *duplicator) : _gpid(duplicator->get_gpid())
+    {
+    }
 
 private:
     mutation_log *_private_log;
     gpid _gpid;
-    private_log_loader *_loader;
 
     log_file_ptr _current, _next;
     bool _read_from_start{true};

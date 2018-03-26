@@ -27,15 +27,12 @@
 #pragma once
 
 #include <dsn/dist/replication/duplication_common.h>
-#include <dsn/dist/replication/duplication_backlog_handler.h>
-#include <dsn/utility/chrono_literals.h>
+#include <dsn/cpp/pipeline.h>
 
 #include "dist/replication/lib/replica.h"
 
 namespace dsn {
 namespace replication {
-
-using namespace dsn::literals::chrono_literals;
 
 class duplication_view
 {
@@ -63,8 +60,6 @@ public:
 
 typedef std::unique_ptr<duplication_view> duplication_view_u_ptr;
 
-class duplication_pipeline;
-
 // Each mutation_duplicator is responsible for one duplication.
 // It works in THREAD_POOL_REPLICATION (LPC_DUPLICATE_MUTATIONS),
 // sharded by gpid, so, all functions are single-threaded,
@@ -74,7 +69,7 @@ class duplication_pipeline;
 // TODO(wutao1): optimize
 // Currently we create duplicator for every duplication.
 // They're isolated even if they share the same private log.
-class mutation_duplicator
+class mutation_duplicator : pipeline::base
 {
 public:
     mutation_duplicator(const duplication_entry &ent, replica *r);
@@ -111,11 +106,6 @@ public:
         _view->status = new_state.status;
     }
 
-    /// ================================= Implementation =================================== ///
-
-    // Await for all running tasks to complete.
-    void wait_all() { dsn_task_tracker_wait_all(tracker()->tracker()); }
-
     gpid get_gpid() { return _replica->get_gpid(); }
 
     // Returns: the task tracker.
@@ -132,11 +122,14 @@ private:
     replica *_replica;
 
     bool _paused;
-    std::unique_ptr<duplication_pipeline> _pipeline;
 
     // protect the access of _view.
     mutable ::dsn::service::zrwlock_nr _lock;
     duplication_view_u_ptr _view;
+
+    /// === pipeline stages === ///
+    std::unique_ptr<load_mutation> _load;
+    std::unique_ptr<ship_mutation> _ship;
 };
 
 typedef std::unique_ptr<mutation_duplicator> mutation_duplicator_u_ptr;

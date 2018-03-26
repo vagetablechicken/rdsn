@@ -35,7 +35,7 @@
 
 namespace dsn {
 
-using literals::chrono_literals::operator""_ms;
+using literals::chrono_literals::operator"" _ms;
 
 //
 // rpc_holder is mainly designed for RAII of dsn_message_t.
