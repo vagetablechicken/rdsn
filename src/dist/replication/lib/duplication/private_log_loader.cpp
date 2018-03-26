@@ -131,6 +131,8 @@ void load_from_private_log::load_from_log_file()
 
     if (_mutation_batch.empty()) {
         repeat(10_s);
+    } else {
+        step_down_next_stage(_mutation_batch.move_all_mutations());
     }
 }
 
