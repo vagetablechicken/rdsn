@@ -113,8 +113,11 @@ public:
 
 private:
     friend class mutation_duplicator_test;
+
     friend class load_mutation;
     friend class ship_mutation;
+    friend class private_log_loader;
+    friend class load_from_private_log;
 
     const dupid_t _id;
     const std::string _remote_cluster_address;

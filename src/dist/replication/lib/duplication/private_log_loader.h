@@ -28,6 +28,7 @@
 
 #include "mutation_duplicator.h"
 #include "mutation_batch.h"
+#include "duplication_pipeline.h"
 
 #include <dsn/cpp/message_utils.h>
 #include <dsn/cpp/pipeline.h>
@@ -40,20 +41,15 @@
 namespace dsn {
 namespace replication {
 
-class private_log_loader : pipeline::base
-{
-    private_log_loader() { from(_load.get()).link(); }
-
-public:
-    std::unique_ptr<load_from_private_log> _load;
-};
-
 /// Loads mutations from private log into memory.
 /// It works in THREAD_POOL_REPLICATION_LONG (LPC_DUPLICATION_LOAD_MUTATIONS),
 /// which permits tasks to be executed in a blocking way.
-class load_from_private_log : pipeline::when_arg<decree>, pipeline::result<mutation_tuple_set>
+class load_from_private_log : pipeline::when_0, pipeline::result<mutation_tuple_set>
 {
+public:
     void run() override;
+
+    void set_start_decree(decree start_decree) { _start_decree = start_decree; }
 
     /// =================================== Implementation =================================== ///
 
@@ -82,12 +78,13 @@ class load_from_private_log : pipeline::when_arg<decree>, pipeline::result<mutat
     // Switches to the log file with index = current_log_index + 1.
     void switch_to_next_log_file();
 
-    explicit load_from_private_log(mutation_duplicator *duplicator) : _gpid(duplicator->get_gpid())
+    explicit load_from_private_log(mutation_duplicator *duplicator)
+        : _private_log(duplicator->_replica->private_log()), _gpid(duplicator->get_gpid())
     {
     }
 
 private:
-    mutation_log *_private_log;
+    mutation_log_ptr _private_log;
     gpid _gpid;
 
     log_file_ptr _current, _next;
@@ -96,6 +93,28 @@ private:
     mutation_batch _mutation_batch;
 
     decree _start_decree{0};
+};
+
+class private_log_loader : pipeline::base
+{
+    explicit private_log_loader(mutation_duplicator *duplicator) : _load(duplicator)
+    {
+        thread_pool(LPC_DUPLICATION_LOAD_MUTATIONS)
+            .task_tracker(duplicator->tracker())
+            .thread_hash(duplicator->get_gpid().thread_hash());
+
+        // load from private log and ship the mutations through mutation_duplicator.
+        from(&_load).link_pipe(duplicator, duplicator->_ship.get());
+    }
+
+    void load(decree start_decree)
+    {
+        _load.set_start_decree(start_decree);
+        run();
+    }
+
+public:
+    load_from_private_log _load;
 };
 
 } // namespace replication

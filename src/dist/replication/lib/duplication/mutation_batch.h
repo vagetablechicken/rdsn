@@ -45,6 +45,8 @@ struct mutation_batch
 
     bool empty() const { return _loaded_mutations.empty(); }
 
+    mutation_tuple_set move_all_mutations() { return std::move(_loaded_mutations); }
+
 private:
     friend class mutation_duplicator_test;
 

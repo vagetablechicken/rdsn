@@ -140,23 +140,6 @@ struct when_0 : environment
     }
 };
 
-// A special variant of when.
-// Executed as when<input>, but can be called by `run()` like when_0.
-template <typename Input>
-struct when_arg : when_0
-{
-    typedef Input input_type;
-
-    void bind_arg(Input &in) { _arg = std::move(in); }
-
-    Input &get_arg() { return _arg; }
-
-    const Input &get_arg() const { return _arg; }
-
-private:
-    Input _arg;
-};
-
 // A special variant of when, which executes in parallel for each of
 // the elements of `Container`.
 template <typename Container, typename Input = typename Container::value_type>
@@ -164,7 +147,7 @@ struct parallel_when : when<Input>
 {
     typedef Container input_type;
 
-    void parallel_for_each(Container &c)
+    void run(Container &c)
     {
         _pending = std::move(c);
         for (Input element : _pending) {
@@ -211,6 +194,18 @@ struct pipeline_node
         return {next};
     }
 
+    /// Link to stage of another pipeline.
+    template <typename NextStage>
+    void link_pipe(environment *env, NextStage *next)
+    {
+        env->schedule([next]() {
+            static_assert(traits::pipeline_match_v<Stage, NextStage>, "");
+
+            this_stage->func = [next](ArgType &args) mutable { next->run(args); };
+            return {next};
+        });
+    }
+
     pipeline_node(Stage *s) : this_stage(s) {}
 
 private:
@@ -231,15 +226,6 @@ struct base : environment
     {
         schedule([stage = static_cast<when_0 *>(_root_stage)]() {
             // static_cast for downcast, but completely safe.
-            stage->run();
-        });
-    }
-
-    template <typename Input>
-    void run(Input &in)
-    {
-        schedule([ stage = static_cast<when_arg<Input> *>(_root_stage), in = std::move(in) ]() {
-            stage->bind_arg(in);
             stage->run();
         });
     }
