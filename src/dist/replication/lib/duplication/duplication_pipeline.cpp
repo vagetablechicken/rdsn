@@ -52,12 +52,19 @@ void load_mutation::run()
     }
 
     // load from private log
-    // _log_on_disk->load_mutations_from_decree(_start_decree);
+    _log_on_disk->load_mutations_from_decree(_start_decree);
 }
 
 load_mutation::~load_mutation() {}
 
-void ship_mutation::run(mutation_tuple &mut)
+load_mutation::load_mutation(mutation_duplicator *duplicator)
+    : _log_on_disk(new private_log_loader(duplicator)),
+      _log_in_cache(duplicator->_replica->_prepare_list),
+      _start_decree(duplicator->_view->last_decree + 1)
+{
+}
+
+void ship_mutation::ship(mutation_tuple &mut)
 {
     _backlog_handler->duplicate(mut, [this, mut](error_s err) mutable {
         decree d = std::get<0>(mut);

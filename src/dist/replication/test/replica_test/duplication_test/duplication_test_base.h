@@ -28,109 +28,35 @@
 
 #include <dsn/utility/smart_pointers.h>
 #include <dsn/dist/replication/replication_app_base.h>
+#include <dsn/utility/filesystem.h>
 
 #include "dist/replication/lib/replica_stub.h"
 #include "dist/replication/lib/duplication/replica_duplication.h"
 #include "dist/replication/test/replica_test/unit_test/test_utils.h"
 
-#include "mock_duplication_backlog_handler.h"
+#include "mock_utils.h"
 
 namespace dsn {
 namespace replication {
 
-class replication_app_base_for_duplication : public replication_app_base
+struct replica_stub_duplication_test_base : ::testing::Test
 {
-public:
-    explicit replication_app_base_for_duplication(replica *replica) : replication_app_base(replica)
+    replica_stub_duplication_test_base()
     {
-    }
-
-    ::dsn::error_code start(int argc, char **argv) override { return ERR_NOT_IMPLEMENTED; }
-
-    ::dsn::error_code stop(bool clear_state) override { return ERR_NOT_IMPLEMENTED; }
-
-    ::dsn::error_code sync_checkpoint() override { return ERR_NOT_IMPLEMENTED; }
-
-    ::dsn::error_code async_checkpoint(bool is_emergency) override { return ERR_NOT_IMPLEMENTED; }
-
-    ::dsn::error_code prepare_get_checkpoint(/*out*/ ::dsn::blob &learn_req) override
-    {
-        return ERR_NOT_IMPLEMENTED;
-    }
-
-    ::dsn::error_code get_checkpoint(int64_t learn_start,
-                                     const ::dsn::blob &learn_request,
-                                     /*out*/ learn_state &state) override
-    {
-        return ERR_NOT_IMPLEMENTED;
-    }
-
-    ::dsn::error_code storage_apply_checkpoint(chkpt_apply_mode mode,
-                                               const learn_state &state) override
-    {
-        return ERR_NOT_IMPLEMENTED;
-    }
-
-    ::dsn::error_code copy_checkpoint_to_dir(const char *checkpoint_dir,
-                                             /*output*/ int64_t *last_decree) override
-    {
-        return ERR_NOT_IMPLEMENTED;
-    }
-
-    ::dsn::replication::decree last_durable_decree() const override { return 0; }
-
-    int on_request(dsn_message_t request) override { return 0; }
-};
-
-class mock_replica : public replica
-{
-public:
-    mock_replica(replica_stub *stub, gpid gpid, const app_info &app, const char *dir)
-        : replica(stub, gpid, app, dir, false)
-    {
-        _app = dsn::make_unique<dsn::replication::replication_app_base_for_duplication>(this);
-    }
-
-    ~mock_replica() override
-    {
-        _config.status = partition_status::PS_INACTIVE;
-        _app.reset(nullptr);
-    }
-
-    void init_private_log(mutation_log_ptr log) { _private_log = log; }
-
-    replica::duplication_impl &get_replica_duplication_impl() { return *_duplication_impl; }
-
-    void as_primary() { _config.status = partition_status::PS_PRIMARY; }
-};
-
-struct duplication_test_base : public ::testing::Test
-{
-    duplication_test_base()
-    {
+        stub = dsn::make_unique<mock_replica_stub>(); // mock duplication_backlog_handler
         duplication_backlog_handler_factory::set_initializer(
             []() { return new mock_duplication_backlog_handler_factory(); });
         duplication_backlog_handler_factory::initialize();
     }
 
-    static std::unique_ptr<mock_replica> create_replica(replica_stub *stub,
-                                                        int appid = 1,
-                                                        int partition_index = 1,
-                                                        const char *dir = "./")
-    {
-        gpid gpid(appid, partition_index);
-        app_info app_info;
-        app_info.app_type = "replica";
+    ~replica_stub_duplication_test_base() { stub.reset(); }
 
-        return make_unique<mock_replica>(stub, gpid, app_info, dir);
-    }
-
-    static void add_dup(mock_replica *r, mutation_duplicator_u_ptr dup)
+    void add_dup(mock_replica *r, mutation_duplicator_u_ptr dup)
     {
         r->get_replica_duplication_impl()._duplications[dup->id()] = std::move(dup);
     }
 
-    static mutation_duplicator *find_dup(mock_replica *r, dupid_t dupid)
+    mutation_duplicator *find_dup(mock_replica *r, dupid_t dupid)
     {
         auto &dup_entities = r->get_replica_duplication_impl()._duplications;
         if (dup_entities.find(dupid) == dup_entities.end()) {
@@ -138,47 +64,60 @@ struct duplication_test_base : public ::testing::Test
         }
         return dup_entities[dupid].get();
     }
+
+    std::unique_ptr<mock_replica_stub> stub;
 };
 
-class mock_replica_stub : public replica_stub
+struct replica_duplication_test_base : replica_stub_duplication_test_base
 {
-public:
-    mock_replica_stub() = default;
-
-    ~mock_replica_stub() override = default;
-
-    mock_replica_stub::duplication_impl &get_replica_stub_duplication_impl()
+    replica_duplication_test_base()
     {
-        return *_duplication_impl;
+        replica = create_mock_replica(stub.get(), 1, 1, log_dir.c_str());
     }
 
-    void add_replica(replica *r) { _replicas[r->get_gpid()] = replica_ptr(r); }
+    std::unique_ptr<mock_replica> replica;
+    const std::string log_dir{"./test-log"};
+};
 
-    mock_replica *add_primary_replica(int appid, int part_index = 1)
+struct mutation_duplicator_test_base : replica_duplication_test_base
+{
+    mutation_duplicator_test_base() {}
+
+    mutation_ptr create_test_mutation(int64_t decree, const std::string &data)
     {
-        auto r = add_non_primary_replica(appid, part_index);
-        r->as_primary();
-        return r;
+        mutation_ptr mu(new mutation());
+        mu->data.header.ballot = 1;
+        mu->data.header.decree = decree;
+        mu->data.header.pid = replica->get_gpid();
+        mu->data.header.last_committed_decree = decree - 1;
+        mu->data.header.log_offset = 0;
+        mu->data.header.timestamp = decree;
+
+        std::shared_ptr<char> s(new char[data.length()]);
+        memcpy(s.get(), data.data(), data.length());
+        dsn::blob b(std::move(s), data.length());
+
+        mu->data.updates.emplace_back(mutation_update());
+        mu->data.updates.back().code =
+            RPC_COLD_BACKUP; // whatever code it is, but never be WRITE_EMPTY
+        mu->data.updates.back().data = std::move(b);
+        mu->client_requests.push_back(nullptr);
+
+        // mutation_duplicator always loads from hard disk,
+        // so it must be logged.
+        mu->set_logged();
+
+        return mu;
     }
 
-    mock_replica *add_non_primary_replica(int appid, int part_index = 1)
+    std::unique_ptr<mutation_duplicator> create_test_duplicator()
     {
-        auto r = duplication_test_base::create_replica(this, appid, part_index).release();
-        add_replica(r);
-        mock_replicas[gpid(appid, part_index)] = r;
-        return r;
+        duplication_entry dup_ent;
+        dup_ent.dupid = 1;
+        dup_ent.remote_address = "remote_address";
+        dup_ent.status = duplication_status::DS_START;
+        return make_unique<mutation_duplicator>(dup_ent, replica.get());
     }
-
-    mock_replica *find_replica(int appid, int part_index = 1)
-    {
-        return mock_replicas[gpid(appid, part_index)];
-    }
-
-    void set_state_connected() { _state = replica_node_state::NS_Connected; }
-
-    rpc_address get_meta_server_address() const override { return rpc_address("127.0.0.2", 12321); }
-
-    std::map<gpid, mock_replica *> mock_replicas;
 };
 
 } // namespace replication

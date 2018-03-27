@@ -60,6 +60,10 @@ public:
 
 typedef std::unique_ptr<duplication_view> duplication_view_u_ptr;
 
+struct load_mutation;
+struct ship_mutation;
+struct load_from_private_log;
+
 // Each mutation_duplicator is responsible for one duplication.
 // It works in THREAD_POOL_REPLICATION (LPC_DUPLICATE_MUTATIONS),
 // sharded by gpid, so, all functions are single-threaded,
@@ -69,7 +73,7 @@ typedef std::unique_ptr<duplication_view> duplication_view_u_ptr;
 // TODO(wutao1): optimize
 // Currently we create duplicator for every duplication.
 // They're isolated even if they share the same private log.
-class mutation_duplicator : pipeline::base
+struct mutation_duplicator : pipeline::base
 {
 public:
     mutation_duplicator(const duplication_entry &ent, replica *r);
@@ -82,9 +86,6 @@ public:
 
     // Thread-safe
     void start();
-
-    // Thread-safe
-    void pause();
 
     dupid_t id() const { return _id; }
 
@@ -114,23 +115,20 @@ public:
 private:
     friend class mutation_duplicator_test;
 
-    friend class load_mutation;
-    friend class ship_mutation;
+    friend struct load_mutation;
+    friend struct ship_mutation;
     friend class private_log_loader;
-    friend class load_from_private_log;
 
     const dupid_t _id;
     const std::string _remote_cluster_address;
 
     replica *_replica;
 
-    bool _paused;
-
     // protect the access of _view.
     mutable ::dsn::service::zrwlock_nr _lock;
     duplication_view_u_ptr _view;
 
-    /// === pipeline stages === ///
+    /// === pipeline === ///
     std::unique_ptr<load_mutation> _load;
     std::unique_ptr<ship_mutation> _ship;
 };

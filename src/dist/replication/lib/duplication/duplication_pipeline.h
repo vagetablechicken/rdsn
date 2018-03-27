@@ -38,17 +38,13 @@ class private_log_loader;
 
 using namespace dsn::literals::chrono_literals;
 
-struct load_mutation : pipeline::when_0, pipeline::result<mutation_tuple_set>
+struct load_mutation : pipeline::when<>, pipeline::result<mutation_tuple_set>
 {
     void run() override;
 
     /// ==== Implementation ==== ///
 
-    explicit load_mutation(mutation_duplicator *duplicator)
-        : _log_in_cache(duplicator->_replica->_prepare_list),
-          _start_decree(duplicator->_view->last_decree + 1)
-    {
-    }
+    explicit load_mutation(mutation_duplicator *duplicator);
 
     ~load_mutation();
 
@@ -66,9 +62,15 @@ private:
     mutation_duplicator *_duplicator{nullptr};
 };
 
-struct ship_mutation : pipeline::parallel_when<mutation_tuple_set>, pipeline::result_0
+struct ship_mutation : pipeline::when<mutation_tuple_set>, public pipeline::result_0
 {
-    void run(mutation_tuple &in) override;
+    void run(mutation_tuple_set &&in) override
+    {
+        _pending = std::move(in);
+        for (mutation_tuple mut : _pending) {
+            ship(mut);
+        }
+    }
 
     /// ==== Implementation ==== ///
 
@@ -79,12 +81,20 @@ struct ship_mutation : pipeline::parallel_when<mutation_tuple_set>, pipeline::re
                                                _duplicator->_replica->get_app_info()->app_name);
     }
 
+    void ship(mutation_tuple &mut);
+
+    void repeat(mutation_tuple &mut, std::chrono::milliseconds delay_ms)
+    {
+        schedule([ this, mut = std::move(mut) ]() mutable { ship(mut); }, delay_ms);
+    }
+
     gpid get_gpid() { return _duplicator->get_gpid(); }
 
 private:
     std::unique_ptr<duplication_backlog_handler> _backlog_handler;
 
     mutation_duplicator *_duplicator{nullptr};
+    mutation_tuple_set _pending;
 };
 
 } // namespace replication

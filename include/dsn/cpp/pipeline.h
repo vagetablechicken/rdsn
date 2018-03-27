@@ -67,8 +67,6 @@ struct result
 
 struct result_0
 {
-    typedef void output_type;
-
     void step_down_next_stage() { func(); }
 
     std::function<void()> func;
@@ -82,7 +80,7 @@ struct base : environment
         wait_all();
     }
 
-    void run();
+    void run_pipeline();
 
     void pause() { _paused.store(true, std::memory_order_release); }
 
@@ -114,11 +112,11 @@ struct base : environment
     template <typename Stage>
     struct pipeline_node
     {
-        using ArgType = typename Stage::output_type;
-
         template <typename NextStage>
         pipeline_node<NextStage> link(NextStage *next)
         {
+            using ArgType = typename Stage::output_type;
+
             next->__conf = this_stage->__conf;
             this_stage->func = [next](ArgType &&args) mutable {
                 if (next->paused()) {
@@ -146,6 +144,8 @@ struct base : environment
         template <typename NextStage>
         void link_pipe(NextStage *next)
         {
+            using ArgType = typename Stage::output_type;
+
             this_stage->func = [next](ArgType &&args) mutable {
                 next->schedule([ next, args = std::forward<ArgType>(args) ]() mutable {
                     next->run(std::forward<ArgType>(args));
@@ -197,7 +197,7 @@ private:
     base *__pipeline;
 };
 
-inline void base::run()
+inline void base::run_pipeline()
 {
     _paused.store(false, std::memory_order_release);
 

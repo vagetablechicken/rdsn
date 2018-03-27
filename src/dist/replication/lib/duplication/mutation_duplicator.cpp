@@ -38,7 +38,6 @@ mutation_duplicator::mutation_duplicator(const duplication_entry &ent, replica *
     : _id(ent.dupid),
       _remote_cluster_address(ent.remote_address),
       _replica(r),
-      _paused(true),
       _view(make_unique<duplication_view>())
 {
     auto it = ent.progress.find(get_gpid().get_partition_index());
@@ -51,16 +50,10 @@ mutation_duplicator::mutation_duplicator(const duplication_entry &ent, replica *
         .task_tracker(tracker())
         .thread_hash(get_gpid().thread_hash());
 
-    // loop for loading when shipping finishes
+    // load -> ship -> load
     _load = dsn::make_unique<load_mutation>(this);
     _ship = dsn::make_unique<ship_mutation>(this);
-    from(_load.get()).link_parallel(_ship.get()).link_0(_load.get());
-}
-
-mutation_duplicator::~mutation_duplicator()
-{
-    pause();
-    wait_all();
+    from(_load.get()).link(_ship.get()).link_0(_load.get());
 }
 
 void mutation_duplicator::start()
@@ -77,15 +70,11 @@ void mutation_duplicator::start()
                            _view->confirmed_decree);
         }
 
-        _paused = false;
-        run();
+        run_pipeline();
     });
 }
 
-void mutation_duplicator::pause()
-{
-    schedule([this]() { _paused = true; });
-}
+mutation_duplicator::~mutation_duplicator() {}
 
 } // namespace replication
 } // namespace dsn
