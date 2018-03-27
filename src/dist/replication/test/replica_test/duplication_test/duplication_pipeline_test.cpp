@@ -24,6 +24,7 @@
  * THE SOFTWARE.
  */
 
+#include "dist/replication/lib/duplication/mutation_batch.h"
 #include "dist/replication/lib/duplication/duplication_pipeline.h"
 
 #include "duplication_test_base.h"
@@ -31,29 +32,64 @@
 namespace dsn {
 namespace replication {
 
-struct ship_mutation_test : public mutation_duplicator_test_base
-{
-    ship_mutation_test() : duplicator(create_test_duplicator()) {}
-
-    std::unique_ptr<mutation_duplicator> duplicator;
-};
+/*static*/ mock_duplication_backlog_handler::duplicate_function
+    mock_duplication_backlog_handler::_func;
 
 struct mock_stage : pipeline::when<>
 {
     void run() override {}
 };
 
-TEST_F(ship_mutation_test, ship_mutation_tuple_set)
+struct ship_mutation_test : public mutation_duplicator_test_base
 {
-    ship_mutation shipper(duplicator.get());
-    mock_stage end;
+    ship_mutation_test() : duplicator(create_test_duplicator()) {}
 
-    pipeline::base base;
-    base.thread_pool(LPC_DUPLICATION_LOAD_MUTATIONS).from(&shipper).link_0(&end);
+    // ensure ship_mutation retries after error.
+    // ensure ship_mutation clears up all pending mutations after stage ends.
+    void test_ship_mutation_tuple_set()
+    {
+        ship_mutation shipper(duplicator.get());
+        mock_stage end;
 
-    mutation_tuple_set mutations;
-    shipper.run(std::move(mutations));
-}
+        pipeline::base base;
+        base.thread_pool(LPC_DUPLICATION_LOAD_MUTATIONS)
+            .task_tracker(replica.get())
+            .from(&shipper)
+            .link_0(&end);
+
+        mutation_tuple result;
+        bool error_flag = true;
+        mock_duplication_backlog_handler::mock([&result, &error_flag](
+            mutation_tuple mut, duplication_backlog_handler::err_callback cb) {
+            if (error_flag) {
+                result = mut;
+            } else {
+                ASSERT_EQ(std::get<0>(result), std::get<0>(mut));
+                ASSERT_EQ(std::get<1>(result), std::get<1>(mut));
+                ASSERT_EQ(std::get<2>(result).to_string(), std::get<2>(mut).to_string());
+            }
+            error_flag = !error_flag;
+
+            if (error_flag) {
+                cb(error_s::make(ERR_TIMEOUT));
+            } else {
+                cb(error_s::make(ERR_OK));
+            }
+        });
+
+        mutation_batch batch;
+        batch.add(create_test_mutation(1, "hello"));
+        batch.add(create_test_mutation(2, "world"));
+        shipper.run(batch.move_all_mutations());
+
+        base.wait_all();
+        ASSERT_EQ(shipper._pending.size(), 0);
+    }
+
+    std::unique_ptr<mutation_duplicator> duplicator;
+};
+
+TEST_F(ship_mutation_test, ship_mutation_tuple_set) { test_ship_mutation_tuple_set(); }
 
 } // namespace replication
 } // namespace dsn

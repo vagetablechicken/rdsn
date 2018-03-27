@@ -91,6 +91,8 @@ struct ship_mutation : pipeline::when<mutation_tuple_set>, public pipeline::resu
     gpid get_gpid() { return _duplicator->get_gpid(); }
 
 private:
+    friend class ship_mutation_test;
+
     std::unique_ptr<duplication_backlog_handler> _backlog_handler;
 
     mutation_duplicator *_duplicator{nullptr};

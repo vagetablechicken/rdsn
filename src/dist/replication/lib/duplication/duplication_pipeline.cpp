@@ -67,13 +67,13 @@ load_mutation::load_mutation(mutation_duplicator *duplicator)
 void ship_mutation::ship(mutation_tuple &mut)
 {
     _backlog_handler->duplicate(mut, [this, mut](error_s err) mutable {
-        decree d = std::get<0>(mut);
+        uint64_t ts = std::get<0>(mut);
 
         if (!err.is_ok()) {
             derror_replica("failed to ship mutation: {} to {}, timestamp: {}",
                            err,
                            _duplicator->remote_cluster_address(),
-                           d);
+                           ts);
 
             // retry infinitely whenever error occurs.
             // delay 1 sec for retry.
