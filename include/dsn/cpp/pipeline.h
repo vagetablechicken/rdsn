@@ -29,6 +29,7 @@
 #include <dsn/tool-api/task_code.h>
 #include <dsn/cpp/clientlet.h>
 #include <dsn/utility/chrono_literals.h>
+#include <dsn/utility/apply.h>
 
 namespace dsn {
 namespace pipeline {
@@ -54,19 +55,6 @@ struct environment
     } __conf;
 };
 
-namespace traits {
-
-template <typename T>
-struct output_type
-{
-    typedef typename T::output_type type;
-};
-
-template <typename T>
-using output_type_t = typename output_type<T>::type;
-
-} // namespace traits
-
 template <typename Output>
 struct result
 {
@@ -87,77 +75,27 @@ struct result_0
 };
 
 // A piece of execution, receiving argument `Input`, running in the environment
-// specified by `pipeline_config`.
-template <typename Input>
+// created by `pipeline::base`.
+template <typename... Args>
 struct when : environment
 {
-    typedef Input input_type;
+    virtual void run(Args &&... in) = 0;
 
-    virtual void run(Input &&in) = 0;
-
-    void repeat(Input &&in, std::chrono::milliseconds delay_ms = 0_ms)
+    void repeat(Args &&... in, std::chrono::milliseconds delay_ms = 0_ms)
     {
-        schedule(
-            [ this, arg = std::forward<Input>(in) ]() mutable { run(std::forward<Input>(arg)); },
-            delay_ms);
+        auto arg_tuple = std::make_tuple(this, std::forward<Args>(in)...);
+        schedule([ this, args = std::move(arg_tuple) ]() mutable {
+            dsn::apply(&when<Args...>::run, args);
+        },
+                 delay_ms);
     }
-};
-
-// A special variant of when, executing without parameters.
-struct when_0 : environment
-{
-    typedef void input_type;
-
-    virtual void run() = 0;
-
-    void repeat(std::chrono::milliseconds delay_ms = 0_ms)
-    {
-        schedule([this]() { run(); }, delay_ms);
-    }
-};
-
-template <typename Stage>
-struct pipeline_node
-{
-    typedef traits::output_type_t<Stage> ArgType;
-
-    template <typename NextStage>
-    pipeline_node<NextStage> link(NextStage *next)
-    {
-        next->__conf = this_stage->__conf;
-        this_stage->func = [next](ArgType &&args) mutable {
-            next->run(std::forward<ArgType>(args));
-        };
-        return {next};
-    }
-
-    template <typename NextStage>
-    pipeline_node<NextStage> link_0(NextStage *next)
-    {
-        next->__conf = this_stage->__conf;
-        this_stage->func = [next]() mutable { next->run(); };
-        return {next};
-    }
-
-    /// Link to stage of another pipeline.
-    template <typename NextStage>
-    void link_pipe(environment *env, NextStage *next)
-    {
-        this_stage->func = [env, next](ArgType &&args) mutable {
-            env->schedule([ next, args = std::forward<ArgType>(args) ]() mutable {
-                next->run(std::forward<ArgType>(args));
-            });
-        };
-    }
-
-    pipeline_node(Stage *s) : this_stage(s) {}
-
-private:
-    Stage *this_stage;
 };
 
 struct base : environment
 {
+    template <typename Stage>
+    class pipeline_node;
+
     template <typename Stage>
     pipeline_node<Stage> from(Stage *start)
     {
@@ -168,10 +106,22 @@ struct base : environment
 
     void run()
     {
-        schedule([stage = static_cast<when_0 *>(_root_stage)]() {
+        _paused.store(false, std::memory_order_release);
+
+        schedule([stage = static_cast<when<> *>(_root_stage)]() {
             // static_cast for downcast, but completely safe.
             stage->run();
         });
+    }
+
+    void pause() { _paused.store(true, std::memory_order_release); }
+
+    bool paused() { return _paused.load(std::memory_order_acquire); }
+
+    virtual ~base()
+    {
+        pause();
+        wait_all();
     }
 
     // Await for all running tasks to complete.
@@ -195,8 +145,49 @@ struct base : environment
         return *this;
     }
 
+    template <typename Stage>
+    struct pipeline_node
+    {
+        using ArgType = typename Stage::output_type;
+
+        template <typename NextStage>
+        pipeline_node<NextStage> link(NextStage *next)
+        {
+            next->__conf = this_stage->__conf;
+            this_stage->func = [next](ArgType &&args) mutable {
+                next->run(std::forward<ArgType>(args));
+            };
+            return {next};
+        }
+
+        template <typename NextStage>
+        pipeline_node<NextStage> link_0(NextStage *next)
+        {
+            next->__conf = this_stage->__conf;
+            this_stage->func = [next]() mutable { next->run(); };
+            return {next};
+        }
+
+        /// Link to stage of another pipeline.
+        template <typename NextStage>
+        void link_pipe(NextStage *next)
+        {
+            this_stage->func = [next](ArgType &&args) mutable {
+              next->schedule([ next, args = std::forward<ArgType>(args) ]() mutable {
+                next->run(std::forward<ArgType>(args));
+              });
+            };
+        }
+
+        pipeline_node(Stage *s) : this_stage(s) {}
+
+    private:
+        Stage *this_stage;
+    };
+
 private:
     environment *_root_stage{nullptr};
+    std::atomic_bool _paused{true};
 };
 
 } // namespace pipeline
