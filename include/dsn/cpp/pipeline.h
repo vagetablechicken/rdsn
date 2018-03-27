@@ -74,55 +74,19 @@ struct result_0
     std::function<void()> func;
 };
 
-// A piece of execution, receiving argument `Input`, running in the environment
-// created by `pipeline::base`.
-template <typename... Args>
-struct when : environment
-{
-    virtual void run(Args &&... in) = 0;
-
-    void repeat(Args &&... in, std::chrono::milliseconds delay_ms = 0_ms)
-    {
-        auto arg_tuple = std::make_tuple(this, std::forward<Args>(in)...);
-        schedule([ this, args = std::move(arg_tuple) ]() mutable {
-            dsn::apply(&when<Args...>::run, args);
-        },
-                 delay_ms);
-    }
-};
-
 struct base : environment
 {
-    template <typename Stage>
-    class pipeline_node;
-
-    template <typename Stage>
-    pipeline_node<Stage> from(Stage *start)
-    {
-        start->__conf = __conf;
-        _root_stage = start;
-        return {start};
-    }
-
-    void run()
-    {
-        _paused.store(false, std::memory_order_release);
-
-        schedule([stage = static_cast<when<> *>(_root_stage)]() {
-            // static_cast for downcast, but completely safe.
-            stage->run();
-        });
-    }
-
-    void pause() { _paused.store(true, std::memory_order_release); }
-
-    bool paused() { return _paused.load(std::memory_order_acquire); }
-
     virtual ~base()
     {
         pause();
         wait_all();
     }
+
+    void run();
+
+    void pause() { _paused.store(true, std::memory_order_release); }
+
+    bool paused() { return _paused.load(std::memory_order_acquire); }
 
     // Await for all running tasks to complete.
     void wait_all() { dsn_task_tracker_wait_all(__conf.task_tracker->tracker()); }
@@ -145,6 +109,8 @@ struct base : environment
         return *this;
     }
 
+    /// === Pipeline Declaration === ///
+
     template <typename Stage>
     struct pipeline_node
     {
@@ -155,6 +121,9 @@ struct base : environment
         {
             next->__conf = this_stage->__conf;
             this_stage->func = [next](ArgType &&args) mutable {
+                if (next->paused()) {
+                    return;
+                }
                 next->run(std::forward<ArgType>(args));
             };
             return {next};
@@ -164,7 +133,12 @@ struct base : environment
         pipeline_node<NextStage> link_0(NextStage *next)
         {
             next->__conf = this_stage->__conf;
-            this_stage->func = [next]() mutable { next->run(); };
+            this_stage->func = [next]() mutable {
+                if (next->paused()) {
+                    return;
+                }
+                next->run();
+            };
             return {next};
         }
 
@@ -173,9 +147,9 @@ struct base : environment
         void link_pipe(NextStage *next)
         {
             this_stage->func = [next](ArgType &&args) mutable {
-              next->schedule([ next, args = std::forward<ArgType>(args) ]() mutable {
-                next->run(std::forward<ArgType>(args));
-              });
+                next->schedule([ next, args = std::forward<ArgType>(args) ]() mutable {
+                    next->run(std::forward<ArgType>(args));
+                });
             };
         }
 
@@ -185,10 +159,53 @@ struct base : environment
         Stage *this_stage;
     };
 
+    template <typename Stage>
+    pipeline_node<Stage> from(Stage *start)
+    {
+        start->__conf = __conf;
+        _root_stage = start;
+        return {start};
+    }
+
 private:
     environment *_root_stage{nullptr};
     std::atomic_bool _paused{true};
 };
+
+// A piece of execution, receiving argument `Input`, running in the environment
+// created by `pipeline::base`.
+template <typename... Args>
+struct when : environment
+{
+    virtual void run(Args &&... in) = 0;
+
+    void repeat(Args &&... in, std::chrono::milliseconds delay_ms = 0_ms)
+    {
+        auto arg_tuple = std::make_tuple(this, std::forward<Args>(in)...);
+        schedule([ this, args = std::move(arg_tuple) ]() mutable {
+            if (paused()) {
+                return;
+            }
+            dsn::apply(&when<Args...>::run, args);
+        },
+                 delay_ms);
+    }
+
+    bool paused() { return __pipeline->paused(); }
+
+private:
+    base *__pipeline;
+};
+
+inline void base::run()
+{
+    _paused.store(false, std::memory_order_release);
+
+    schedule([stage = static_cast<when<> *>(_root_stage)]() {
+        // static_cast for downcast, but completely safe.
+        stage->run();
+    });
+}
 
 } // namespace pipeline
 } // namespace dsn
