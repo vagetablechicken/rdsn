@@ -118,6 +118,7 @@ struct load_from_private_log_test : public mutation_duplicator_test_base
         mutation_log_ptr mlog = new mutation_log_private(
             replica->dir(), private_log_size_mb, replica->get_gpid(), nullptr, 1024, 512, 50000);
         EXPECT_EQ(mlog->open(nullptr, nullptr), ERR_OK);
+        replica->init_private_log(mlog);
 
         {
             for (int i = 0; i < num_entries; i++) {
@@ -143,7 +144,6 @@ struct load_from_private_log_test : public mutation_duplicator_test_base
         mutation_tuple_set loaded_mutations;
         mock_stage end_stage([&loaded_mutations, &load, total](mutation_tuple_set &&mutations) {
             for (mutation_tuple mut : mutations) {
-
                 loaded_mutations.emplace(mut);
             }
 

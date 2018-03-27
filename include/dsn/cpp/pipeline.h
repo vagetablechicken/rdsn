@@ -118,6 +118,7 @@ struct base : environment
             using ArgType = typename Stage::output_type;
 
             next->__conf = this_stage->__conf;
+            next->__pipeline = this_stage->__pipeline;
             this_stage->func = [next](ArgType &&args) mutable {
                 if (next->paused()) {
                     return;
@@ -131,6 +132,7 @@ struct base : environment
         pipeline_node<NextStage> link_0(NextStage *next)
         {
             next->__conf = this_stage->__conf;
+            next->__pipeline = this_stage->__pipeline;
             this_stage->func = [next]() mutable {
                 if (next->paused()) {
                     return;
@@ -163,6 +165,7 @@ struct base : environment
     pipeline_node<Stage> from(Stage *start)
     {
         start->__conf = __conf;
+        start->__pipeline = this;
         _root_stage = start;
         return {start};
     }
@@ -194,6 +197,8 @@ struct when : environment
     bool paused() { return __pipeline->paused(); }
 
 private:
+    friend class base;
+
     base *__pipeline;
 };
 
