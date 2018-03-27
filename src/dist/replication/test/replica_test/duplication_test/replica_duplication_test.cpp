@@ -29,7 +29,7 @@
 namespace dsn {
 namespace replication {
 
-struct replica_duplication_test : public duplication_test_base
+struct replica_duplication_test : public replica_duplication_test_base
 {
     void SetUp() override { stub = dsn::make_unique<mock_replica_stub>(); }
 
@@ -38,7 +38,7 @@ struct replica_duplication_test : public duplication_test_base
     void test_remove_non_existed_duplications()
     {
         auto r = stub->add_primary_replica(2, 1);
-        auto& d = r->get_replica_duplication_impl();
+        auto &d = r->get_replica_duplication_impl();
 
         duplication_entry ent;
         ent.dupid = 1;
@@ -56,8 +56,6 @@ struct replica_duplication_test : public duplication_test_base
         d.sync_duplication(ent);
         ASSERT_EQ(d._duplications.size(), 1);
     }
-
-    std::unique_ptr<mock_replica_stub> stub;
 };
 
 TEST_F(replica_duplication_test, get_duplication_confirms)

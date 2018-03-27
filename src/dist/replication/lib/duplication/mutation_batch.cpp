@@ -32,6 +32,8 @@
 namespace dsn {
 namespace replication {
 
+constexpr int64_t mutation_batch::PREPARE_LIST_NUM_ENTRIES;
+
 error_s mutation_batch::add(mutation_ptr mu)
 {
     error_code ec = _mutation_buffer->prepare(mu, partition_status::PS_INACTIVE);

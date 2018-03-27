@@ -71,7 +71,7 @@ public:
     gpid get_gpid() { return _replica->get_gpid(); }
 
 private:
-    friend class duplication_test_base;
+    friend class replica_stub_duplication_test_base;
     friend class replica_stub_duplication_test;
     friend class replica_duplication_test;
 

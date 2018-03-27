@@ -31,7 +31,7 @@
 namespace dsn {
 namespace replication {
 
-struct replica_stub_duplication_test : public duplication_test_base
+struct replica_stub_duplication_test : public replica_stub_duplication_test_base
 {
     void SetUp() override
     {

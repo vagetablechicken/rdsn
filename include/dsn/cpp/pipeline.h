@@ -29,16 +29,10 @@
 #include <dsn/tool-api/task_code.h>
 #include <dsn/cpp/clientlet.h>
 #include <dsn/utility/chrono_literals.h>
+#include <dsn/utility/apply.h>
 
 namespace dsn {
 namespace pipeline {
-
-struct pipeline_config
-{
-    task_code thread_pool_code;
-    clientlet *task_tracker{nullptr};
-    int thread_hash{0};
-};
 
 // The environment for execution.
 struct environment
@@ -46,214 +40,172 @@ struct environment
     template <typename F>
     void schedule(F &&f, std::chrono::milliseconds delay_ms = 0_ms)
     {
-        tasking::enqueue(conf.thread_pool_code,
-                         conf.task_tracker,
+        tasking::enqueue(__conf.thread_pool_code,
+                         __conf.task_tracker,
                          std::forward<F>(f),
-                         conf.thread_hash,
+                         __conf.thread_hash,
                          delay_ms);
     }
 
-protected:
-    friend struct base;
-
-    template <typename Stage>
-    friend struct pipeline_node;
-
-    pipeline_config conf;
+    struct
+    {
+        task_code thread_pool_code;
+        clientlet *task_tracker{nullptr};
+        int thread_hash{0};
+    } __conf;
 };
-
-namespace traits {
-
-template <typename T>
-struct input_type
-{
-    typedef typename T::input_type type;
-};
-
-template <typename T>
-using input_type_t = typename input_type<T>::type;
-
-template <typename T>
-struct output_type
-{
-    typedef typename T::output_type type;
-};
-
-template <typename T>
-using output_type_t = typename output_type<T>::type;
-
-template <typename Stage, typename NextStage>
-struct pipeline_match
-{
-    static constexpr bool value = std::is_same<output_type_t<Stage>, input_type_t<NextStage>>::value
-};
-
-template <typename Stage, typename NextStage>
-static constexpr bool pipeline_match_v = pipeline_match<Stage, NextStage>::value;
-
-} // namespace traits
 
 template <typename Output>
 struct result
 {
     typedef Output output_type;
 
-    void step_down_next_stage(Output &&out) { func(out); }
+    void step_down_next_stage(Output &&out) { func(std::forward<Output>(out)); }
 
-    std::function<void(Output &)> func;
+    std::function<void(Output &&)> func;
 };
 
 struct result_0
 {
-    typedef void output_type;
-
     void step_down_next_stage() { func(); }
 
     std::function<void()> func;
 };
 
-// A piece of execution, receiving argument `Input`, running in the environment
-// specified by `pipeline_config`.
-template <typename Input>
-struct when : environment
-{
-    typedef Input input_type;
-
-    virtual void run(Input &in) = 0;
-
-    void repeat(Input &in, std::chrono::milliseconds delay_ms = 0_ms)
-    {
-        schedule([ this, arg = std::move(in) ]() mutable { run(arg); }, delay_ms);
-    }
-};
-
-// A special variant of when, executing without parameters.
-struct when_0 : environment
-{
-    typedef void input_type;
-
-    virtual void run() = 0;
-
-    void repeat(std::chrono::milliseconds delay_ms = 0_ms)
-    {
-        schedule([this]() { run(); }, delay_ms);
-    }
-};
-
-// A special variant of when, which executes in parallel for each of
-// the elements of `Container`.
-template <typename Container, typename Input = typename Container::value_type>
-struct parallel_when : when<Input>
-{
-    typedef Container input_type;
-
-    void run(Container &c)
-    {
-        _pending = std::move(c);
-        for (Input element : _pending) {
-            when<Input>::run(element);
-        }
-    }
-
-protected:
-    Container _pending;
-};
-
-template <typename Stage>
-struct pipeline_node
-{
-    typedef traits::output_type_t<Stage> ArgType;
-
-    template <typename NextStage>
-    pipeline_node<NextStage> link(NextStage *next)
-    {
-        static_assert(traits::pipeline_match_v<Stage, NextStage>, "");
-        next->conf = this_stage->conf;
-
-        this_stage->func = [next](ArgType &args) mutable { next->run(args); };
-        return {next};
-    }
-
-    template <typename NextStage>
-    pipeline_node<NextStage> link_0(NextStage *next)
-    {
-        static_assert(traits::pipeline_match_v<Stage, NextStage>, "");
-        next->conf = this_stage->conf;
-
-        this_stage->func = [next]() mutable { next->run(); };
-        return {next};
-    }
-
-    template <typename NextStage>
-    pipeline_node<NextStage> link_parallel(NextStage *next)
-    {
-        static_assert(traits::pipeline_match_v<Stage, NextStage>, "");
-        next->conf = this_stage->conf;
-
-        this_stage->func = [next](ArgType &args) mutable { next->parallel_for_each(args); };
-        return {next};
-    }
-
-    /// Link to stage of another pipeline.
-    template <typename NextStage>
-    void link_pipe(environment *env, NextStage *next)
-    {
-        env->schedule([next]() {
-            static_assert(traits::pipeline_match_v<Stage, NextStage>, "");
-
-            this_stage->func = [next](ArgType &args) mutable { next->run(args); };
-            return {next};
-        });
-    }
-
-    pipeline_node(Stage *s) : this_stage(s) {}
-
-private:
-    Stage *this_stage;
-};
-
 struct base : environment
 {
-    template <typename Stage>
-    pipeline_node<Stage> from(Stage *start)
+    virtual ~base()
     {
-        start->conf = conf;
-        _root_stage = start;
-        return {start};
+        pause();
+        wait_all();
     }
 
-    void run()
-    {
-        schedule([stage = static_cast<when_0 *>(_root_stage)]() {
-            // static_cast for downcast, but completely safe.
-            stage->run();
-        });
-    }
+    void run_pipeline();
+
+    void pause() { _paused.store(true, std::memory_order_release); }
+
+    bool paused() { return _paused.load(std::memory_order_acquire); }
 
     // Await for all running tasks to complete.
-    void wait_all() { dsn_task_tracker_wait_all(conf.task_tracker->tracker()); }
+    void wait_all() { dsn_task_tracker_wait_all(__conf.task_tracker->tracker()); }
 
     /// === Environment Configuration === ///
 
     base &thread_pool(task_code tc)
     {
-        conf.thread_pool_code = tc;
+        __conf.thread_pool_code = tc;
         return *this;
     }
     base &thread_hash(int hash)
     {
-        conf.thread_hash = hash;
+        __conf.thread_hash = hash;
         return *this;
     }
     base &task_tracker(clientlet *tracker)
     {
-        conf.task_tracker = tracker;
+        __conf.task_tracker = tracker;
         return *this;
+    }
+
+    /// === Pipeline Declaration === ///
+
+    template <typename Stage>
+    struct pipeline_node
+    {
+        template <typename NextStage>
+        pipeline_node<NextStage> link(NextStage *next)
+        {
+            using ArgType = typename Stage::output_type;
+
+            next->__conf = this_stage->__conf;
+            this_stage->func = [next](ArgType &&args) mutable {
+                if (next->paused()) {
+                    return;
+                }
+                next->run(std::forward<ArgType>(args));
+            };
+            return {next};
+        }
+
+        template <typename NextStage>
+        pipeline_node<NextStage> link_0(NextStage *next)
+        {
+            next->__conf = this_stage->__conf;
+            this_stage->func = [next]() mutable {
+                if (next->paused()) {
+                    return;
+                }
+                next->run();
+            };
+            return {next};
+        }
+
+        /// Link to stage of another pipeline.
+        template <typename NextStage>
+        void link_pipe(NextStage *next)
+        {
+            using ArgType = typename Stage::output_type;
+
+            this_stage->func = [next](ArgType &&args) mutable {
+                next->schedule([ next, args = std::forward<ArgType>(args) ]() mutable {
+                    next->run(std::forward<ArgType>(args));
+                });
+            };
+        }
+
+        pipeline_node(Stage *s) : this_stage(s) {}
+
+    private:
+        Stage *this_stage;
+    };
+
+    template <typename Stage>
+    pipeline_node<Stage> from(Stage *start)
+    {
+        start->__conf = __conf;
+        _root_stage = start;
+        return {start};
     }
 
 private:
     environment *_root_stage{nullptr};
+    std::atomic_bool _paused{true};
 };
+
+// A piece of execution, receiving argument `Input`, running in the environment
+// created by `pipeline::base`.
+template <typename... Args>
+struct when : environment
+{
+    virtual void run(Args &&... in) = 0;
+
+    void repeat(Args &&... in, std::chrono::milliseconds delay_ms = 0_ms)
+    {
+        auto arg_tuple = std::make_tuple(this, std::forward<Args>(in)...);
+        schedule([ this, args = std::move(arg_tuple) ]() mutable {
+            if (paused()) {
+                return;
+            }
+            dsn::apply(&when<Args...>::run, args);
+        },
+                 delay_ms);
+    }
+
+    bool paused() { return __pipeline->paused(); }
+
+private:
+    base *__pipeline;
+};
+
+inline void base::run_pipeline()
+{
+    _paused.store(false, std::memory_order_release);
+
+    schedule([stage = static_cast<when<> *>(_root_stage)]() {
+        // static_cast for downcast, but completely safe.
+        stage->run();
+    });
+}
 
 } // namespace pipeline
 } // namespace dsn

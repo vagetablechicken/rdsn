@@ -26,37 +26,10 @@
 
 #pragma once
 
-#include <dsn/dist/replication/duplication_backlog_handler.h>
-
-#include "dist/replication/lib/prepare_list.h"
+#include <dsn/utility/absl/utility/utility.h>
 
 namespace dsn {
-namespace replication {
 
-// A sorted array of committed mutations that are ready for duplication.
-// Not thread-safe.
-struct mutation_batch
-{
-    static constexpr int64_t PREPARE_LIST_NUM_ENTRIES{200};
+using ::absl::apply;
 
-    mutation_batch();
-
-    error_s add(mutation_ptr mu);
-
-    bool empty() const { return _loaded_mutations.empty(); }
-
-    mutation_tuple_set move_all_mutations() { return std::move(_loaded_mutations); }
-
-private:
-    friend class mutation_duplicator_test;
-
-    std::unique_ptr<prepare_list> _mutation_buffer;
-    mutation_tuple_set _loaded_mutations;
-};
-
-using mutation_batch_u_ptr = std::unique_ptr<mutation_batch>;
-
-extern void add_mutation_if_valid(mutation_ptr &, mutation_tuple_set &);
-
-} // namespace replication
 } // namespace dsn

@@ -44,7 +44,7 @@ namespace replication {
 /// Loads mutations from private log into memory.
 /// It works in THREAD_POOL_REPLICATION_LONG (LPC_DUPLICATION_LOAD_MUTATIONS),
 /// which permits tasks to be executed in a blocking way.
-class load_from_private_log : pipeline::when_0, pipeline::result<mutation_tuple_set>
+struct load_from_private_log : pipeline::when<>, pipeline::result<mutation_tuple_set>
 {
 public:
     void run() override;
@@ -78,12 +78,11 @@ public:
     // Switches to the log file with index = current_log_index + 1.
     void switch_to_next_log_file();
 
-    explicit load_from_private_log(mutation_duplicator *duplicator)
-        : _private_log(duplicator->_replica->private_log()), _gpid(duplicator->get_gpid())
-    {
-    }
+    load_from_private_log(replica *r) : _private_log(r->private_log()), _gpid(r->get_gpid()) {}
 
 private:
+    friend class load_from_private_log_test;
+
     mutation_log_ptr _private_log;
     gpid _gpid;
 
@@ -95,25 +94,26 @@ private:
     decree _start_decree{0};
 };
 
-class private_log_loader : pipeline::base
+struct private_log_loader : pipeline::base
 {
-    explicit private_log_loader(mutation_duplicator *duplicator) : _load(duplicator)
+public:
+    explicit private_log_loader(mutation_duplicator *duplicator) : _load(duplicator->_replica)
     {
         thread_pool(LPC_DUPLICATION_LOAD_MUTATIONS)
             .task_tracker(duplicator->tracker())
             .thread_hash(duplicator->get_gpid().thread_hash());
 
-        // load from private log and ship the mutations through mutation_duplicator.
-        from(&_load).link_pipe(duplicator, duplicator->_ship.get());
+        // load -> ship via duplicator
+        from(&_load).link_pipe(duplicator->_ship.get());
     }
 
-    void load(decree start_decree)
+    void load_mutations_from_decree(decree start_decree)
     {
         _load.set_start_decree(start_decree);
-        run();
+        run_pipeline();
     }
 
-public:
+private:
     load_from_private_log _load;
 };
 

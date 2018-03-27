@@ -24,39 +24,36 @@
  * THE SOFTWARE.
  */
 
-#pragma once
+#include "dist/replication/lib/duplication/duplication_pipeline.h"
 
-#include <dsn/dist/replication/duplication_backlog_handler.h>
-
-#include "dist/replication/lib/prepare_list.h"
+#include "duplication_test_base.h"
 
 namespace dsn {
 namespace replication {
 
-// A sorted array of committed mutations that are ready for duplication.
-// Not thread-safe.
-struct mutation_batch
+struct ship_mutation_test : public mutation_duplicator_test_base
 {
-    static constexpr int64_t PREPARE_LIST_NUM_ENTRIES{200};
+    ship_mutation_test() : duplicator(create_test_duplicator()) {}
 
-    mutation_batch();
-
-    error_s add(mutation_ptr mu);
-
-    bool empty() const { return _loaded_mutations.empty(); }
-
-    mutation_tuple_set move_all_mutations() { return std::move(_loaded_mutations); }
-
-private:
-    friend class mutation_duplicator_test;
-
-    std::unique_ptr<prepare_list> _mutation_buffer;
-    mutation_tuple_set _loaded_mutations;
+    std::unique_ptr<mutation_duplicator> duplicator;
 };
 
-using mutation_batch_u_ptr = std::unique_ptr<mutation_batch>;
+struct mock_stage : pipeline::when<>
+{
+    void run() override {}
+};
 
-extern void add_mutation_if_valid(mutation_ptr &, mutation_tuple_set &);
+TEST_F(ship_mutation_test, ship_mutation_tuple_set)
+{
+    ship_mutation shipper(duplicator.get());
+    mock_stage end;
+
+    pipeline::base base;
+    base.thread_pool(LPC_DUPLICATION_LOAD_MUTATIONS).from(&shipper).link_0(&end);
+
+    mutation_tuple_set mutations;
+    shipper.run(std::move(mutations));
+}
 
 } // namespace replication
 } // namespace dsn
