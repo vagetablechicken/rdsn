@@ -25,6 +25,8 @@
  */
 #pragma once
 
+namespace dsn {
+
 ///
 /// A simple buffer pool designed for efficiently formatting
 /// frequently used types (like gpid, rpc_address) into string,
@@ -54,3 +56,5 @@ public:
         return buffer[index];
     }
 };
+
+} // namespace dsn

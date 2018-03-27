@@ -34,6 +34,15 @@
 /// (https://en.cppreference.com/w/cpp/compiler_support).
 
 namespace dsn {
+
+/// Example:
+///
+///   using namespace dsn::literals::chrono_literals;
+///
+///   template <typename F>
+///   void schedule(F &&f, std::chrono::milliseconds delay_ms = 0_ms);
+///
+
 inline namespace literals {
 inline namespace chrono_literals {
 

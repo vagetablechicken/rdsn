@@ -93,7 +93,7 @@ public:
               dsn_task_priority_t pri,
               dsn::threadpool_code pool);
 
-    constexpr task_code() : _internal_code(0) {}
+    constexpr task_code() = default;
 
     constexpr explicit task_code(int code) : _internal_code(code) {}
 
@@ -119,7 +119,7 @@ public:
 
 private:
     task_code(const char *name);
-    int _internal_code;
+    int _internal_code{0};
 };
 
 // you can define task_cods by the following macros

@@ -39,7 +39,7 @@ namespace dsn {
 class blob
 {
 public:
-    constexpr blob() : _buffer(nullptr), _data(nullptr), _length(0) {}
+    constexpr blob() = default;
 
     blob(const std::shared_ptr<char> &buffer, unsigned int length)
         : _holder(buffer), _buffer(_holder.get()), _data(_holder.get()), _length(length)
@@ -154,8 +154,8 @@ public:
 private:
     friend class binary_writer;
     std::shared_ptr<char> _holder;
-    const char *_buffer;
-    const char *_data;
-    unsigned int _length; // data length
+    const char *_buffer{nullptr};
+    const char *_data{nullptr};
+    unsigned int _length{0}; // data length
 };
 }
