@@ -51,7 +51,15 @@ TEST_F(ship_mutation_test, ship_mutation_tuple_set)
     pipeline::base base;
     base.thread_pool(LPC_DUPLICATION_LOAD_MUTATIONS).from(&shipper).link_0(&end);
 
+    mock_duplication_backlog_handler::mock(
+        [](mutation_tuple mut, duplication_backlog_handler::err_callback cb) {
+
+        });
+
     mutation_tuple_set mutations;
+
+    create_test_mutation(1, "hello");
+    create_test_mutation(1, "world");
     shipper.run(std::move(mutations));
 }
 
