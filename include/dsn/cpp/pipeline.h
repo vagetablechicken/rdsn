@@ -55,21 +55,17 @@ struct environment
     } __conf;
 };
 
-template <typename Output>
+template <typename... Args>
 struct result
 {
-    typedef Output output_type;
+    typedef std::tuple<Args...> ArgsTupleType;
 
-    void step_down_next_stage(Output &&out) { func(std::forward<Output>(out)); }
+    void step_down_next_stage(Args &&... args)
+    {
+        func(std::make_tuple(std::forward<Args>(args)...));
+    }
 
-    std::function<void(Output &&)> func;
-};
-
-struct result_0
-{
-    void step_down_next_stage() { func(); }
-
-    std::function<void()> func;
+    std::function<void(ArgsTupleType &&)> func;
 };
 
 struct base : environment
@@ -115,29 +111,15 @@ struct base : environment
         template <typename NextStage>
         pipeline_node<NextStage> link(NextStage *next)
         {
-            using ArgType = typename Stage::output_type;
+            using ArgsTupleType = typename Stage::ArgsTupleType;
 
             next->__conf = this_stage->__conf;
             next->__pipeline = this_stage->__pipeline;
-            this_stage->func = [next](ArgType &&args) mutable {
+            this_stage->func = [next](ArgsTupleType &&args) mutable {
                 if (next->paused()) {
                     return;
                 }
-                next->run(std::forward<ArgType>(args));
-            };
-            return {next};
-        }
-
-        template <typename NextStage>
-        pipeline_node<NextStage> link_0(NextStage *next)
-        {
-            next->__conf = this_stage->__conf;
-            next->__pipeline = this_stage->__pipeline;
-            this_stage->func = [next]() mutable {
-                if (next->paused()) {
-                    return;
-                }
-                next->run();
+                dsn::apply(&NextStage::run, std::tuple_cat(std::make_tuple(next), std::move(args)));
             };
             return {next};
         }
@@ -146,12 +128,12 @@ struct base : environment
         template <typename NextStage>
         void link_pipe(NextStage *next)
         {
-            using ArgType = typename Stage::output_type;
+            // lazily get the result type of this stage,
+            // since it's probable not inherited from result<>.
+            using ArgsTupleType = typename Stage::ArgsTupleType;
 
-            this_stage->func = [next](ArgType &&args) mutable {
-                next->schedule([ next, args = std::forward<ArgType>(args) ]() mutable {
-                    next->run(std::forward<ArgType>(args));
-                });
+            this_stage->func = [next](ArgsTupleType &&args) mutable {
+                dsn::apply(&NextStage::run, std::tuple_cat(std::make_tuple(next), std::move(args)));
             };
         }
 
