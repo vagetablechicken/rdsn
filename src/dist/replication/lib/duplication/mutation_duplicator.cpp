@@ -53,7 +53,7 @@ mutation_duplicator::mutation_duplicator(const duplication_entry &ent, replica *
     // load -> ship -> load
     _load = dsn::make_unique<load_mutation>(this);
     _ship = dsn::make_unique<ship_mutation>(this);
-    from(_load.get()).link(_ship.get()).link_0(_load.get());
+    from(_load.get()).link(_ship.get()).link(_load.get());
 }
 
 void mutation_duplicator::start()

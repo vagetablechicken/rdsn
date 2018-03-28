@@ -38,7 +38,7 @@ class private_log_loader;
 
 using namespace dsn::literals::chrono_literals;
 
-struct load_mutation : pipeline::when<>, pipeline::result<mutation_tuple_set>
+struct load_mutation : pipeline::when<>, pipeline::result<decree, mutation_tuple_set>
 {
     void run() override;
 
@@ -55,17 +55,18 @@ struct load_mutation : pipeline::when<>, pipeline::result<mutation_tuple_set>
 
 private:
     std::unique_ptr<private_log_loader> _log_on_disk;
-    prepare_list *_log_in_cache;
-    decree _start_decree;
+    prepare_list *_log_in_cache{nullptr};
+    decree _start_decree{0};
     mutation_tuple_set _loaded_mutations;
 
     mutation_duplicator *_duplicator{nullptr};
 };
 
-struct ship_mutation : pipeline::when<mutation_tuple_set>, public pipeline::result_0
+struct ship_mutation : pipeline::when<decree, mutation_tuple_set>, public pipeline::result<>
 {
-    void run(mutation_tuple_set &&in) override
+    void run(decree &&last_decree, mutation_tuple_set &&in) override
     {
+        _last_decree = last_decree;
         _pending = std::move(in);
         for (mutation_tuple mut : _pending) {
             ship(mut);
@@ -97,6 +98,7 @@ private:
 
     mutation_duplicator *_duplicator{nullptr};
     mutation_tuple_set _pending;
+    decree _last_decree{0};
 };
 
 } // namespace replication

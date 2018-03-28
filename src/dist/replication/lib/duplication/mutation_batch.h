@@ -47,6 +47,8 @@ struct mutation_batch
 
     mutation_tuple_set move_all_mutations() { return std::move(_loaded_mutations); }
 
+    decree last_decree() const { return _mutation_buffer->last_committed_decree(); }
+
 private:
     friend class mutation_duplicator_test;
 
