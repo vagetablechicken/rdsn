@@ -73,7 +73,10 @@ struct base : environment
     virtual ~base()
     {
         pause();
-        wait_all();
+
+        if (__conf.task_tracker != nullptr) {
+            wait_all();
+        }
     }
 
     void run_pipeline();
@@ -193,6 +196,17 @@ inline void base::run_pipeline()
         stage->run();
     });
 }
+
+template <typename... Args>
+struct mock_when : when<Args...>
+{
+    explicit mock_when(std::function<void(Args &&... args)> &&func) : _cb(std::move(func)) {}
+
+    void run(Args &&... args) override { _cb(std::forward<Args>(args)...); }
+
+private:
+    std::function<void(Args &&...)> _cb;
+};
 
 } // namespace pipeline
 } // namespace dsn
