@@ -76,10 +76,61 @@ struct load_mutation_test : public mutation_duplicator_test_base
         base.wait_all();
     }
 
+    void test_load_write_empty_from_cache()
+    {
+        mutation_batch batch;
+
+        auto mut = create_test_mutation(1, "");
+        mut->data.updates.back().code = RPC_REPLICATION_WRITE_EMPTY;
+        batch.add(mut);
+
+        // commit to 1
+        mut = create_test_mutation(2, "");
+        mut->data.updates.back().code = RPC_REPLICATION_WRITE_EMPTY;
+        batch.add(mut);
+
+        // initiates private log.
+        mutation_log_ptr mlog = new mutation_log_private(
+            replica->dir(), 4, replica->get_gpid(), nullptr, 1024, 512, 10000);
+        replica->init_private_log(mlog);
+        mlog->update_max_commit_on_disk(1);
+
+        load_mutation loader(duplicator.get(), replica.get());
+        loader._log_in_cache = batch._mutation_buffer.get(); // replace the cache pointer.
+
+        pipeline::do_when<decree, mutation_tuple_set> end(
+            [](decree &&d, mutation_tuple_set &&mutations) {
+                // yeah, after 10s, loader repeats now.
+                ASSERT_EQ(d, 3);
+            });
+
+        pipeline::base base;
+        base.thread_pool(LPC_DUPLICATION_LOAD_MUTATIONS)
+            .task_tracker(replica.get())
+            .thread_hash(replica->get_gpid().thread_hash()) // set hash to ensure thread safety
+            .from(&loader)
+            .link(&end);
+
+        /// loader must repeat since all mutations are WRITE_EMPTY.
+        loader.run();
+
+        /// add valid writes
+        base.schedule([&batch, &mlog, this]() {
+            batch.add(create_test_mutation(3, "hello"));
+            batch.add(create_test_mutation(4, "world"));
+
+            mlog->update_max_commit_on_disk(3);
+        });
+
+        base.wait_all();
+    }
+
     std::unique_ptr<mutation_duplicator> duplicator;
 };
 
 TEST_F(load_mutation_test, load_mutation_from_cache) { test_load_mutation_from_cache(); }
+
+TEST_F(load_mutation_test, load_write_empty_from_cache) { test_load_write_empty_from_cache(); }
 
 } // namespace replication
 } // namespace dsn

@@ -47,6 +47,7 @@ public:
           _duplication_sync_interval_ms(
               std::chrono::milliseconds(_stub->options().duplication_sync_interval_ms))
     {
+        ddebug_f("start duplication sync every {}ms", _duplication_sync_interval_ms.count());
     }
 
     ~duplication_impl()
@@ -94,7 +95,7 @@ private:
     replica_stub *_stub;
     std::atomic_bool _paused{false};
 
-    const std::chrono::milliseconds _duplication_sync_interval_ms{0_ms};
+    const std::chrono::milliseconds _duplication_sync_interval_ms{10_s};
 };
 
 } // namespace replication

@@ -61,7 +61,10 @@ void load_mutation::run()
             add_mutation_if_valid(mu, _loaded_mutations);
         }
 
-        dassert_f(!_loaded_mutations.empty(), "Impossible! prepare_list must have the mutations");
+        if(_loaded_mutations.empty()) {
+            repeat(10_s);
+            return;
+        }
 
         step_down_next_stage(_log_in_cache->last_committed_decree(), std::move(_loaded_mutations));
         return;
