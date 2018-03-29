@@ -24,44 +24,21 @@
  * THE SOFTWARE.
  */
 
-#include "dist/replication/lib/duplication/duplication_pipeline.h"
-
-#include "duplication_test_base.h"
+#include <dsn/utility/errors.h>
+#include <gtest/gtest.h>
 
 namespace dsn {
-namespace replication {
 
-struct ship_mutation_test : public mutation_duplicator_test_base
+TEST(error_s, copy)
 {
-    ship_mutation_test() : duplicator(create_test_duplicator()) {}
+    error_s s = error_s::make(ERR_TIMEOUT, "test");
+    ASSERT_EQ(s.is_ok(), false);
 
-    std::unique_ptr<mutation_duplicator> duplicator;
-};
+    error_s s2 = s;
+    ASSERT_EQ(s2.description(), s.description());
 
-struct mock_stage : pipeline::when<>
-{
-    void run() override {}
-};
-
-TEST_F(ship_mutation_test, ship_mutation_tuple_set)
-{
-    ship_mutation shipper(duplicator.get());
-    mock_stage end;
-
-    pipeline::base base;
-    base.thread_pool(LPC_DUPLICATION_LOAD_MUTATIONS).from(&shipper).link_0(&end);
-
-    mock_duplication_backlog_handler::mock(
-        [](mutation_tuple mut, duplication_backlog_handler::err_callback cb) {
-
-        });
-
-    mutation_tuple_set mutations;
-
-    create_test_mutation(1, "hello");
-    create_test_mutation(1, "world");
-    shipper.run(std::move(mutations));
+    error_s s3(s2);
+    ASSERT_EQ(s3.description(), s.description());
 }
 
-} // namespace replication
 } // namespace dsn

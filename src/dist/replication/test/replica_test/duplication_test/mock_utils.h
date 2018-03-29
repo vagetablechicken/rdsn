@@ -155,7 +155,6 @@ struct mock_duplication_backlog_handler : public duplication_backlog_handler
 {
     explicit mock_duplication_backlog_handler(gpid id) : duplication_backlog_handler(id) {}
 
-    // thread-safe
     void duplicate(mutation_tuple mut, err_callback cb) override { _func(mut, cb); }
 
     typedef std::function<void(mutation_tuple, err_callback)> duplicate_function;

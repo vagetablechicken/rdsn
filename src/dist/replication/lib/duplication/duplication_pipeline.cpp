@@ -24,6 +24,8 @@
  * THE SOFTWARE.
  */
 
+#include <dsn/dist/replication/replication_app_base.h>
+
 #include "duplication_pipeline.h"
 #include "private_log_loader.h"
 
@@ -32,6 +34,18 @@ namespace replication {
 
 void load_mutation::run()
 {
+    decree max_gced_decree = _replica->private_log()->max_gced_decree(
+        _replica->get_gpid(), _replica->get_app()->init_info().init_offset_in_private_log);
+    if (max_gced_decree > _duplicator->_view->confirmed_decree) {
+        dfatal_replica("the logs haven't yet duplicated were accidentally truncated "
+                       "[last_durable_decree: {}, confirmed_decree: {}]",
+                       _replica->last_durable_decree(),
+                       _duplicator->_view->confirmed_decree);
+        __builtin_unreachable();
+    }
+
+    _start_decree = _duplicator->_view->last_decree + 1;
+
     if (!have_more()) {
         // wait 10 seconds for next try if no mutation was added.
         repeat(10_s);
@@ -47,7 +61,9 @@ void load_mutation::run()
             add_mutation_if_valid(mu, _loaded_mutations);
         }
 
-        step_down_next_stage(std::move(_loaded_mutations));
+        dassert_f(!_loaded_mutations.empty(), "Impossible! prepare_list must have the mutations");
+
+        step_down_next_stage(_log_in_cache->last_committed_decree(), std::move(_loaded_mutations));
         return;
     }
 
@@ -55,25 +71,26 @@ void load_mutation::run()
     _log_on_disk->load_mutations_from_decree(_start_decree);
 }
 
-load_mutation::~load_mutation() {}
+load_mutation::~load_mutation() = default;
 
-load_mutation::load_mutation(mutation_duplicator *duplicator)
+load_mutation::load_mutation(mutation_duplicator *duplicator, replica *r)
     : _log_on_disk(new private_log_loader(duplicator)),
-      _log_in_cache(duplicator->_replica->_prepare_list),
-      _start_decree(duplicator->_view->last_decree + 1)
+      _log_in_cache(r->_prepare_list),
+      _replica(r),
+      _duplicator(duplicator)
 {
 }
 
 void ship_mutation::ship(mutation_tuple &mut)
 {
     _backlog_handler->duplicate(mut, [this, mut](error_s err) mutable {
-        decree d = std::get<0>(mut);
+        uint64_t ts = std::get<0>(mut);
 
         if (!err.is_ok()) {
             derror_replica("failed to ship mutation: {} to {}, timestamp: {}",
                            err,
                            _duplicator->remote_cluster_address(),
-                           d);
+                           ts);
 
             // retry infinitely whenever error occurs.
             // delay 1 sec for retry.
@@ -85,6 +102,7 @@ void ship_mutation::ship(mutation_tuple &mut)
             _pending.erase(mut);
 
             if (_pending.empty()) {
+                _duplicator->update_state(duplication_view().set_last_decree(_last_decree));
                 step_down_next_stage();
             }
         });

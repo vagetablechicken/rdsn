@@ -47,7 +47,11 @@ clientlet::clientlet(int task_bucket_count)
     _access_thread_id_inited = false;
 }
 
-clientlet::~clientlet() { dsn_task_tracker_destroy(_tracker); }
+clientlet::~clientlet()
+{
+    dsn_task_tracker_destroy(_tracker);
+    _tracker = nullptr;
+}
 
 void clientlet::check_hashed_access()
 {

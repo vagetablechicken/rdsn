@@ -48,6 +48,7 @@ void load_from_private_log::run()
         std::vector<std::string> log_files = log_utils::list_all_files_or_die(_private_log->dir());
         find_log_file_to_start(log_files);
         if (_current == nullptr) {
+            ddebug_replica("no private log file is currently available");
             // wait 10 seconds if no log available.
             repeat(10_s);
             return;
@@ -66,18 +67,21 @@ void load_from_private_log::run()
 
 void load_from_private_log::find_log_file_to_start(const std::vector<std::string> &log_files)
 {
-    decree d = _start_decree;
-
+    if (log_files.empty()) {
+        return;
+    }
     std::map<int, log_file_ptr> log_file_map = log_utils::open_log_file_map(log_files);
-    if (log_file_map.empty()) {
-        // no file.
+    if (dsn_unlikely(log_file_map.empty())) {
+        derror_replica("unable to start duplication since no log file is available");
         return;
     }
 
     auto begin = log_file_map.begin();
+    decree d = _start_decree;
 
     if (d == 0) { // start from first log file if it's a new duplication.
         _current = begin->second;
+        _next = nullptr;
         if (log_file_map.size() > 1) {
             _next = std::next(begin)->second;
         }
@@ -93,6 +97,7 @@ void load_from_private_log::find_log_file_to_start(const std::vector<std::string
         if (next_it == log_file_map.end()) {
             // use the last file
             _current = it->second;
+            _next = nullptr;
             return;
         }
         if (it->second->previous_log_max_decree(get_gpid()) < d &&
@@ -132,7 +137,7 @@ void load_from_private_log::load_from_log_file()
     if (_mutation_batch.empty()) {
         repeat(10_s);
     } else {
-        step_down_next_stage(_mutation_batch.move_all_mutations());
+        step_down_next_stage(_mutation_batch.last_decree(), _mutation_batch.move_all_mutations());
     }
 }
 

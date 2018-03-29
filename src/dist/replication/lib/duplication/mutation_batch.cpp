@@ -32,7 +32,7 @@
 namespace dsn {
 namespace replication {
 
-constexpr int64_t mutation_batch::PREPARE_LIST_NUM_ENTRIES;
+/*static*/ constexpr int64_t mutation_batch::PREPARE_LIST_NUM_ENTRIES;
 
 error_s mutation_batch::add(mutation_ptr mu)
 {
@@ -46,8 +46,6 @@ error_s mutation_batch::add(mutation_ptr mu)
                        mu->get_ballot());
     }
 
-    dassert(_mutation_buffer->count() < PREPARE_LIST_NUM_ENTRIES,
-            "impossible! prepare_list has reached the capacity");
     return error_s::ok();
 }
 

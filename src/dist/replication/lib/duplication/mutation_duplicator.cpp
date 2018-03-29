@@ -51,30 +51,19 @@ mutation_duplicator::mutation_duplicator(const duplication_entry &ent, replica *
         .thread_hash(get_gpid().thread_hash());
 
     // load -> ship -> load
-    _load = dsn::make_unique<load_mutation>(this);
+    _load = dsn::make_unique<load_mutation>(this, _replica);
     _ship = dsn::make_unique<ship_mutation>(this);
-    from(_load.get()).link(_ship.get()).link_0(_load.get());
+
+    from(_load.get()).link(_ship.get()).link(_load.get());
 }
 
 void mutation_duplicator::start()
 {
-    schedule([this]() {
-        ddebug_replica(
-            "starting duplication [dupid: {}, remote: {}]", id(), remote_cluster_address());
-        decree max_gced_decree = _replica->private_log()->max_gced_decree(
-            get_gpid(), _replica->get_app()->init_info().init_offset_in_private_log);
-        if (max_gced_decree > _view->confirmed_decree) {
-            dfatal_replica("the logs haven't yet duplicated were accidentally truncated "
-                           "[last_durable_decree: {}, confirmed_decree: {}]",
-                           _replica->last_durable_decree(),
-                           _view->confirmed_decree);
-        }
-
-        run_pipeline();
-    });
+    ddebug_replica("starting duplication [dupid: {}, remote: {}]", id(), remote_cluster_address());
+    run_pipeline();
 }
 
-mutation_duplicator::~mutation_duplicator() {}
+mutation_duplicator::~mutation_duplicator() = default;
 
 } // namespace replication
 } // namespace dsn

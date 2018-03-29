@@ -24,42 +24,37 @@
  * THE SOFTWARE.
  */
 
-#pragma once
-
-#include <dsn/dist/replication/duplication_backlog_handler.h>
-
-#include "dist/replication/lib/prepare_list.h"
+#include <gtest/gtest.h>
+#include <dsn/cpp/pipeline.h>
+#include <dsn/dist/replication.h>
 
 namespace dsn {
-namespace replication {
 
-// A sorted array of committed mutations that are ready for duplication.
-// Not thread-safe.
-struct mutation_batch
+TEST(pipeline_test, pause)
 {
-    static constexpr int64_t PREPARE_LIST_NUM_ENTRIES{200};
+    clientlet tracker;
 
-    mutation_batch();
+    {
+        pipeline::base base;
+        ASSERT_TRUE(base.paused());
 
-    error_s add(mutation_ptr mu);
+        base.pause();
+        ASSERT_TRUE(base.paused());
 
-    bool empty() const { return _loaded_mutations.empty(); }
+        pipeline::do_when<> s1([&s1]() { s1.repeat(1_s); });
 
-    mutation_tuple_set move_all_mutations() { return std::move(_loaded_mutations); }
+        base.thread_pool(LPC_DUPLICATE_MUTATIONS).task_tracker(&tracker).from(&s1);
 
-    decree last_decree() const { return _mutation_buffer->last_committed_decree(); }
+        {
+            base.run_pipeline();
+            ASSERT_FALSE(base.paused());
 
-private:
-    friend class mutation_duplicator_test;
-    friend class load_mutation_test;
+            base.pause();
+            ASSERT_TRUE(base.paused());
 
-    std::unique_ptr<prepare_list> _mutation_buffer;
-    mutation_tuple_set _loaded_mutations;
-};
+            base.wait_all();
+        }
+    }
+}
 
-using mutation_batch_u_ptr = std::unique_ptr<mutation_batch>;
-
-extern void add_mutation_if_valid(mutation_ptr &, mutation_tuple_set &);
-
-} // namespace replication
 } // namespace dsn

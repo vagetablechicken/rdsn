@@ -82,7 +82,7 @@ public:
     // The thread may be seriously blocked under the destruction.
     // Take care when running in THREAD_POOL_REPLICATION, though
     // duplication removal is extremely rare.
-    ~mutation_duplicator();
+    ~mutation_duplicator() override;
 
     // Thread-safe
     void start();
@@ -102,13 +102,21 @@ public:
     void update_state(const duplication_view &new_state)
     {
         ::dsn::service::zauto_write_lock l(_lock);
-        _view->confirmed_decree = std::max(_view->confirmed_decree, new_state.confirmed_decree);
-        _view->last_decree = std::max(_view->last_decree, new_state.last_decree);
-        _view->status = new_state.status;
+        if (new_state.confirmed_decree != 0) {
+            _view->confirmed_decree = std::max(_view->confirmed_decree, new_state.confirmed_decree);
+        }
+        if (new_state.last_decree != 0) {
+            _view->last_decree = std::max(_view->last_decree, new_state.last_decree);
+        }
+        if (new_state.status != duplication_status::DS_INIT) {
+            _view->status = new_state.status;
+        }
     }
 
     gpid get_gpid() { return _replica->get_gpid(); }
 
+    // Use replica as task tracker, mutation_duplicator is bound to be destroyed
+    // before its replica.
     // Returns: the task tracker.
     clientlet *tracker() { return _replica; }
 

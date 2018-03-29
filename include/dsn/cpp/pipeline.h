@@ -55,23 +55,33 @@ struct environment
     } __conf;
 };
 
-template <typename Output>
+template <typename... Args>
 struct result
 {
-    typedef Output output_type;
+    typedef std::tuple<Args...> ArgsTupleType;
 
-    void step_down_next_stage(Output &&out) { func(std::forward<Output>(out)); }
+    void step_down_next_stage(Args &&... args)
+    {
+        func(std::make_tuple(std::forward<Args>(args)...));
+    }
 
-    std::function<void(Output &&)> func;
+    std::function<void(ArgsTupleType &&)> func;
 };
 
-struct result_0
-{
-    void step_down_next_stage() { func(); }
-
-    std::function<void()> func;
-};
-
+//
+// Example:
+//
+// ```
+//   pipeline::base base;
+//
+//   pipeline::do_when<> s1([&s1]() { s1.repeat(1_s); });
+//   base.thread_pool(LPC_DUPLICATE_MUTATIONS).task_tracker(&tracker).from(&s1);
+//
+//   base.run_pipeline();
+//   base.pause();
+//   base.wait_all();
+// ```
+//
 struct base : environment
 {
     virtual ~base()
@@ -80,6 +90,17 @@ struct base : environment
         wait_all();
     }
 
+    // Start this pipeline.
+    // NOTE: Be careful when pipeline starting and pausing are running concurrently,
+    //       though it's internally synchronized, the actual order is still non-deterministic
+    //       from the user's view.
+    //
+    // ```
+    //   base.schedule([&base]() { base.run_pipeline(); });
+    //   base.pause();
+    //   base.wait_all();
+    // ```
+    //
     void run_pipeline();
 
     void pause() { _paused.store(true, std::memory_order_release); }
@@ -87,7 +108,12 @@ struct base : environment
     bool paused() { return _paused.load(std::memory_order_acquire); }
 
     // Await for all running tasks to complete.
-    void wait_all() { dsn_task_tracker_wait_all(__conf.task_tracker->tracker()); }
+    void wait_all()
+    {
+        if (__conf.task_tracker != nullptr) {
+            dsn_task_tracker_wait_all(__conf.task_tracker->tracker());
+        }
+    }
 
     /// === Environment Configuration === ///
 
@@ -115,29 +141,15 @@ struct base : environment
         template <typename NextStage>
         pipeline_node<NextStage> link(NextStage *next)
         {
-            using ArgType = typename Stage::output_type;
+            using ArgsTupleType = typename Stage::ArgsTupleType;
 
             next->__conf = this_stage->__conf;
             next->__pipeline = this_stage->__pipeline;
-            this_stage->func = [next](ArgType &&args) mutable {
+            this_stage->func = [next](ArgsTupleType &&args) mutable {
                 if (next->paused()) {
                     return;
                 }
-                next->run(std::forward<ArgType>(args));
-            };
-            return {next};
-        }
-
-        template <typename NextStage>
-        pipeline_node<NextStage> link_0(NextStage *next)
-        {
-            next->__conf = this_stage->__conf;
-            next->__pipeline = this_stage->__pipeline;
-            this_stage->func = [next]() mutable {
-                if (next->paused()) {
-                    return;
-                }
-                next->run();
+                dsn::apply(&NextStage::run, std::tuple_cat(std::make_tuple(next), std::move(args)));
             };
             return {next};
         }
@@ -146,12 +158,12 @@ struct base : environment
         template <typename NextStage>
         void link_pipe(NextStage *next)
         {
-            using ArgType = typename Stage::output_type;
+            // lazily get the result type of this stage,
+            // since it's probable not inherited from result<>.
+            using ArgsTupleType = typename Stage::ArgsTupleType;
 
-            this_stage->func = [next](ArgType &&args) mutable {
-                next->schedule([ next, args = std::forward<ArgType>(args) ]() mutable {
-                    next->run(std::forward<ArgType>(args));
-                });
+            this_stage->func = [next](ArgsTupleType &&args) mutable {
+                dsn::apply(&NextStage::run, std::tuple_cat(std::make_tuple(next), std::move(args)));
             };
         }
 
@@ -200,6 +212,17 @@ private:
     friend class base;
 
     base *__pipeline;
+};
+
+template <typename... Args>
+struct do_when : when<Args...>
+{
+    explicit do_when(std::function<void(Args &&... args)> &&func) : _cb(std::move(func)) {}
+
+    void run(Args &&... args) override { _cb(std::forward<Args>(args)...); }
+
+private:
+    std::function<void(Args &&...)> _cb;
 };
 
 inline void base::run_pipeline()

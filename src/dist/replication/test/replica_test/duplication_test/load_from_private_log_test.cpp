@@ -31,15 +31,6 @@
 namespace dsn {
 namespace replication {
 
-struct mock_stage : pipeline::when<mutation_tuple_set>
-{
-    explicit mock_stage(std::function<void(mutation_tuple_set &&)> &&func) : _cb(std::move(func)) {}
-
-    void run(mutation_tuple_set &&mutations) override { _cb(std::move(mutations)); }
-
-    std::function<void(mutation_tuple_set &&)> _cb;
-};
-
 struct load_from_private_log_test : public mutation_duplicator_test_base
 {
     load_from_private_log_test() : duplicator(create_test_duplicator())
@@ -59,6 +50,10 @@ struct load_from_private_log_test : public mutation_duplicator_test_base
             replica->dir(), max_log_file_mb, replica->get_gpid(), nullptr, 1024, 512, 10000);
         EXPECT_EQ(mlog->open(nullptr, nullptr), ERR_OK);
 
+        load.find_log_file_to_start({});
+        ASSERT_FALSE(load._current);
+        ASSERT_FALSE(load._next);
+
         { // writing mutations to log which will generate multiple files
             for (int i = 0; i < 1000 * 50; i++) {
                 std::string msg = "hello!";
@@ -70,25 +65,28 @@ struct load_from_private_log_test : public mutation_duplicator_test_base
 
         auto files = log_utils::list_all_files_or_die(log_dir);
 
-        load.set_start_decree(10);
+        // ensure first file is chosen if start_decree = 0.
+        load.set_start_decree(0);
         load.find_log_file_to_start(files);
-        auto lf = load._current;
-        ASSERT_TRUE(lf);
-        ASSERT_EQ(lf->index(), 1);
+        ASSERT_TRUE(load._current);
+        ASSERT_EQ(load._current->index(), 1);
+        ASSERT_TRUE(load._next);
+        ASSERT_EQ(load._next->index(), 2);
 
-        load.set_start_decree(500);
+        load.set_start_decree(50);
         load.find_log_file_to_start(files);
-        lf = load._current;
-        ASSERT_TRUE(lf);
-        ASSERT_EQ(lf->index(), 1);
+        ASSERT_TRUE(load._current);
+        ASSERT_EQ(load._current->index(), 1);
+        ASSERT_TRUE(load._next);
+        ASSERT_EQ(load._next->index(), 2);
 
         std::map<int, log_file_ptr> log_file_map = log_utils::open_log_file_map(files);
         int last_idx = log_file_map.rbegin()->first;
         load.set_start_decree(1000 * 50 + 200);
         load.find_log_file_to_start(files);
-        lf = load._current;
-        ASSERT_TRUE(lf);
-        ASSERT_EQ(lf->index(), last_idx);
+        ASSERT_TRUE(load._current);
+        ASSERT_EQ(load._current->index(), last_idx);
+        ASSERT_FALSE(load._next);
     }
 
     // Ensure mutation_duplicator can correctly handle real-world log file (log.1.0).
@@ -108,7 +106,8 @@ struct load_from_private_log_test : public mutation_duplicator_test_base
             mlog->update_max_commit_on_disk(total_mutations_size); // assume all logs are committed.
         }
 
-        load_and_wait_all_entries_loaded(7);
+        /// write empty will be ignored.
+        load_and_wait_all_entries_loaded(4);
     }
 
     void test_start_duplication(int num_entries, int private_log_size_mb)
@@ -121,15 +120,15 @@ struct load_from_private_log_test : public mutation_duplicator_test_base
         replica->init_private_log(mlog);
 
         {
-            for (int i = 0; i < num_entries; i++) {
+            for (int i = 1; i <= num_entries; i++) {
                 std::string msg = "hello!";
                 mutations.push_back(msg);
-                mutation_ptr mu = create_test_mutation(2 + i, msg);
+                mutation_ptr mu = create_test_mutation(i, msg);
                 mlog->append(mu, LPC_AIO_IMMEDIATE_CALLBACK, nullptr, nullptr, 0);
             }
 
             // commit the last entry
-            mutation_ptr mu = create_test_mutation(2 + num_entries, "hello!");
+            mutation_ptr mu = create_test_mutation(1 + num_entries, "hello!");
             mlog->append(mu, LPC_AIO_IMMEDIATE_CALLBACK, nullptr, nullptr, 0);
 
             dsn_task_tracker_wait_all(mlog->tracker());
@@ -142,15 +141,19 @@ struct load_from_private_log_test : public mutation_duplicator_test_base
     {
         load_from_private_log load(replica.get());
         mutation_tuple_set loaded_mutations;
-        mock_stage end_stage([&loaded_mutations, &load, total](mutation_tuple_set &&mutations) {
-            for (mutation_tuple mut : mutations) {
-                loaded_mutations.emplace(mut);
-            }
 
-            if (loaded_mutations.size() < total) {
-                load.run();
-            }
-        });
+        pipeline::do_when<decree, mutation_tuple_set> end_stage(
+            [&loaded_mutations, &load, total](decree &&d, mutation_tuple_set &&mutations) {
+                // we create one mutation_update per mutation
+                // the mutations are started from 1
+                for (mutation_tuple mut : mutations) {
+                    loaded_mutations.emplace(mut);
+                }
+
+                if (loaded_mutations.size() < total) {
+                    load.run();
+                }
+            });
 
         duplicator->from(&load).link(&end_stage);
         duplicator->run_pipeline();
