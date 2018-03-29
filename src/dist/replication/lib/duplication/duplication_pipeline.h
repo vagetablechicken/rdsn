@@ -44,7 +44,7 @@ struct load_mutation : pipeline::when<>, pipeline::result<decree, mutation_tuple
 
     /// ==== Implementation ==== ///
 
-    explicit load_mutation(mutation_duplicator *duplicator);
+    load_mutation(mutation_duplicator *duplicator, prepare_list *cache);
 
     ~load_mutation();
 
@@ -54,6 +54,8 @@ struct load_mutation : pipeline::when<>, pipeline::result<decree, mutation_tuple
     }
 
 private:
+    friend class load_mutation_test;
+
     std::unique_ptr<private_log_loader> _log_on_disk;
     prepare_list *_log_in_cache{nullptr};
     decree _start_decree{0};

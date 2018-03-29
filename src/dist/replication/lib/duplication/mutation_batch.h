@@ -51,6 +51,7 @@ struct mutation_batch
 
 private:
     friend class mutation_duplicator_test;
+    friend class load_mutation_test;
 
     std::unique_ptr<prepare_list> _mutation_buffer;
     mutation_tuple_set _loaded_mutations;

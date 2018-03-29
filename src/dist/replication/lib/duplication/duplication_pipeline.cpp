@@ -61,9 +61,10 @@ void load_mutation::run()
 
 load_mutation::~load_mutation() {}
 
-load_mutation::load_mutation(mutation_duplicator *duplicator)
+load_mutation::load_mutation(mutation_duplicator *duplicator, prepare_list *cache)
     : _log_on_disk(new private_log_loader(duplicator)),
-      _log_in_cache(duplicator->_replica->_prepare_list)
+      _log_in_cache(cache),
+      _duplicator(duplicator)
 {
 }
 
