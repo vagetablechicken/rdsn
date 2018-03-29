@@ -297,7 +297,7 @@ private:
     friend class ::dsn::replication::mutation_queue;
     friend class ::dsn::replication::replica_stub;
     friend class mock_replica;
-`    friend class mutation_duplicator;
+    friend class load_mutation;
 
     // replica configuration, updated by update_local_configuration ONLY
     replica_configuration _config;

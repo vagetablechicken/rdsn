@@ -24,37 +24,21 @@
  * THE SOFTWARE.
  */
 
+#include <dsn/utility/errors.h>
 #include <gtest/gtest.h>
-#include <dsn/cpp/pipeline.h>
-#include <dsn/dist/replication.h>
 
 namespace dsn {
 
-TEST(pipeline_test, pause)
+TEST(error_s, copy)
 {
-    clientlet tracker;
+    error_s s = error_s::make(ERR_TIMEOUT, "test");
+    ASSERT_EQ(s.is_ok(), false);
 
-    {
-        pipeline::base base;
-        ASSERT_TRUE(base.paused());
+    error_s s2 = s;
+    ASSERT_EQ(s2.description(), s.description());
 
-        base.pause();
-        ASSERT_TRUE(base.paused());
-
-        pipeline::do_when<> s1([&s1]() { s1.repeat(1_s); });
-
-        base.thread_pool(LPC_DUPLICATE_MUTATIONS).task_tracker(&tracker).from(&s1);
-
-        {
-            base.run_pipeline();
-            ASSERT_FALSE(base.paused());
-
-            base.pause();
-            ASSERT_TRUE(base.paused());
-
-            base.wait_all();
-        }
-    }
+    error_s s3(s2);
+    ASSERT_EQ(s3.description(), s.description());
 }
 
 } // namespace dsn

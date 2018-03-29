@@ -44,7 +44,7 @@ struct load_mutation : pipeline::when<>, pipeline::result<decree, mutation_tuple
 
     /// ==== Implementation ==== ///
 
-    load_mutation(mutation_duplicator *duplicator, prepare_list *cache);
+    load_mutation(mutation_duplicator *duplicator, replica *r);
 
     ~load_mutation();
 
@@ -52,6 +52,8 @@ struct load_mutation : pipeline::when<>, pipeline::result<decree, mutation_tuple
     {
         return _duplicator->_replica->private_log()->max_commit_on_disk() >= _start_decree;
     }
+
+    gpid get_gpid() { return _replica->get_gpid(); }
 
 private:
     friend class load_mutation_test;
@@ -61,6 +63,7 @@ private:
     decree _start_decree{0};
     mutation_tuple_set _loaded_mutations;
 
+    replica *_replica{nullptr};
     mutation_duplicator *_duplicator{nullptr};
 };
 

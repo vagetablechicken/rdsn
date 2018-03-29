@@ -24,6 +24,8 @@
  * THE SOFTWARE.
  */
 
+#include <dsn/dist/replication/replication_app_base.h>
+
 #include "duplication_pipeline.h"
 #include "private_log_loader.h"
 
@@ -32,6 +34,16 @@ namespace replication {
 
 void load_mutation::run()
 {
+    decree max_gced_decree = _replica->private_log()->max_gced_decree(
+        _replica->get_gpid(), _replica->get_app()->init_info().init_offset_in_private_log);
+    if (max_gced_decree > _duplicator->_view->confirmed_decree) {
+        dfatal_replica("the logs haven't yet duplicated were accidentally truncated "
+                       "[last_durable_decree: {}, confirmed_decree: {}]",
+                       _replica->last_durable_decree(),
+                       _duplicator->_view->confirmed_decree);
+        __builtin_unreachable();
+    }
+
     _start_decree = _duplicator->_view->last_decree + 1;
 
     if (!have_more()) {
@@ -59,11 +71,12 @@ void load_mutation::run()
     _log_on_disk->load_mutations_from_decree(_start_decree);
 }
 
-load_mutation::~load_mutation() {}
+load_mutation::~load_mutation() = default;
 
-load_mutation::load_mutation(mutation_duplicator *duplicator, prepare_list *cache)
+load_mutation::load_mutation(mutation_duplicator *duplicator, replica *r)
     : _log_on_disk(new private_log_loader(duplicator)),
-      _log_in_cache(cache),
+      _log_in_cache(r->_prepare_list),
+      _replica(r),
       _duplicator(duplicator)
 {
 }

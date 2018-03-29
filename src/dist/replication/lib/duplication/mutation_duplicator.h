@@ -82,7 +82,7 @@ public:
     // The thread may be seriously blocked under the destruction.
     // Take care when running in THREAD_POOL_REPLICATION, though
     // duplication removal is extremely rare.
-    ~mutation_duplicator();
+    ~mutation_duplicator() override;
 
     // Thread-safe
     void start();
@@ -115,6 +115,8 @@ public:
 
     gpid get_gpid() { return _replica->get_gpid(); }
 
+    // Use replica as task tracker, mutation_duplicator is bound to be destroyed
+    // before its replica.
     // Returns: the task tracker.
     clientlet *tracker() { return _replica; }
 

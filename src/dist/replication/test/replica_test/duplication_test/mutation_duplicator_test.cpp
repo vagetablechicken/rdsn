@@ -55,11 +55,6 @@ struct mutation_duplicator_test : public mutation_duplicator_test_base
     {
         //        utils::filesystem::remove_path(log_dir);
     }
-
-    const std::string log_dir;
-
-    std::unique_ptr<mock_replica> replica;
-    std::unique_ptr<replica_stub> stub;
 };
 
 TEST_F(mutation_duplicator_test, new_duplicator)
@@ -95,6 +90,7 @@ TEST_F(mutation_duplicator_test, pause_start_duplication)
         auto duplicator = create_test_duplicator();
         duplicator->start();
         duplicator->pause();
+        ASSERT_TRUE(duplicator->paused());
 
         duplicator->wait_all();
     }

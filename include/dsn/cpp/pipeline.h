@@ -68,17 +68,39 @@ struct result
     std::function<void(ArgsTupleType &&)> func;
 };
 
+//
+// Example:
+//
+// ```
+//   pipeline::base base;
+//
+//   pipeline::do_when<> s1([&s1]() { s1.repeat(1_s); });
+//   base.thread_pool(LPC_DUPLICATE_MUTATIONS).task_tracker(&tracker).from(&s1);
+//
+//   base.run_pipeline();
+//   base.pause();
+//   base.wait_all();
+// ```
+//
 struct base : environment
 {
     virtual ~base()
     {
         pause();
-
-        if (__conf.task_tracker != nullptr) {
-            wait_all();
-        }
+        wait_all();
     }
 
+    // Start this pipeline.
+    // NOTE: Be careful when pipeline starting and pausing are running concurrently,
+    //       though it's internally synchronized, the actual order is still non-deterministic
+    //       from the user's view.
+    //
+    // ```
+    //   base.schedule([&base]() { base.run_pipeline(); });
+    //   base.pause();
+    //   base.wait_all();
+    // ```
+    //
     void run_pipeline();
 
     void pause() { _paused.store(true, std::memory_order_release); }
@@ -86,7 +108,12 @@ struct base : environment
     bool paused() { return _paused.load(std::memory_order_acquire); }
 
     // Await for all running tasks to complete.
-    void wait_all() { dsn_task_tracker_wait_all(__conf.task_tracker->tracker()); }
+    void wait_all()
+    {
+        if (__conf.task_tracker != nullptr) {
+            dsn_task_tracker_wait_all(__conf.task_tracker->tracker());
+        }
+    }
 
     /// === Environment Configuration === ///
 
@@ -187,6 +214,17 @@ private:
     base *__pipeline;
 };
 
+template <typename... Args>
+struct do_when : when<Args...>
+{
+    explicit do_when(std::function<void(Args &&... args)> &&func) : _cb(std::move(func)) {}
+
+    void run(Args &&... args) override { _cb(std::forward<Args>(args)...); }
+
+private:
+    std::function<void(Args &&...)> _cb;
+};
+
 inline void base::run_pipeline()
 {
     _paused.store(false, std::memory_order_release);
@@ -196,17 +234,6 @@ inline void base::run_pipeline()
         stage->run();
     });
 }
-
-template <typename... Args>
-struct mock_when : when<Args...>
-{
-    explicit mock_when(std::function<void(Args &&... args)> &&func) : _cb(std::move(func)) {}
-
-    void run(Args &&... args) override { _cb(std::forward<Args>(args)...); }
-
-private:
-    std::function<void(Args &&...)> _cb;
-};
 
 } // namespace pipeline
 } // namespace dsn

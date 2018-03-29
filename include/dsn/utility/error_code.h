@@ -7,6 +7,8 @@
 #endif
 
 namespace dsn {
+
+// TODO(wutao1): register the error name in compile time.
 class error_code
 {
 public:
@@ -19,6 +21,7 @@ public:
     const char *to_string() const;
 
     bool operator==(const error_code &r) { return _internal_code == r._internal_code; }
+
     bool operator!=(const error_code &r) { return !(*this == r); }
 
     operator int() const { return _internal_code; }
@@ -29,7 +32,9 @@ public:
 #endif
 
     static int max();
+
     static bool is_exist(const char *name);
+
     static error_code try_get(const char *name, error_code default_value);
     static error_code try_get(const std::string &name, error_code default_value);
 

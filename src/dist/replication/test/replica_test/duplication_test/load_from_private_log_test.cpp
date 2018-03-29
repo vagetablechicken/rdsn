@@ -31,21 +31,6 @@
 namespace dsn {
 namespace replication {
 
-struct mock_stage : pipeline::when<decree, mutation_tuple_set>
-{
-    explicit mock_stage(std::function<void(decree &&, mutation_tuple_set &&)> &&func)
-        : _cb(std::move(func))
-    {
-    }
-
-    void run(decree &&d, mutation_tuple_set &&mutations) override
-    {
-        _cb(std::move(d), std::move(mutations));
-    }
-
-    std::function<void(decree &&, mutation_tuple_set &&)> _cb;
-};
-
 struct load_from_private_log_test : public mutation_duplicator_test_base
 {
     load_from_private_log_test() : duplicator(create_test_duplicator())
@@ -157,7 +142,7 @@ struct load_from_private_log_test : public mutation_duplicator_test_base
         load_from_private_log load(replica.get());
         mutation_tuple_set loaded_mutations;
 
-        mock_stage end_stage(
+        pipeline::do_when<decree, mutation_tuple_set> end_stage(
             [&loaded_mutations, &load, total](decree &&d, mutation_tuple_set &&mutations) {
                 // we create one mutation_update per mutation
                 // the mutations are started from 1

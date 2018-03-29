@@ -32,21 +32,6 @@
 namespace dsn {
 namespace replication {
 
-struct mock_stage : pipeline::when<decree, mutation_tuple_set>
-{
-    explicit mock_stage(std::function<void(decree &&, mutation_tuple_set &&)> &&func)
-        : _cb(std::move(func))
-    {
-    }
-
-    void run(decree &&d, mutation_tuple_set &&mutations) override
-    {
-        _cb(std::move(d), std::move(mutations));
-    }
-
-    std::function<void(decree &&, mutation_tuple_set &&)> _cb;
-};
-
 struct load_mutation_test : public mutation_duplicator_test_base
 {
     load_mutation_test() : duplicator(create_test_duplicator()) {}
@@ -65,17 +50,18 @@ struct load_mutation_test : public mutation_duplicator_test_base
             mlog->update_max_commit_on_disk(2); // assume all logs are committed.
         }
 
-        load_mutation loader(duplicator.get(), batch._mutation_buffer.get());
-        mock_stage end([](decree &&d, mutation_tuple_set &&mutations) {
-            ASSERT_EQ(d, 2);
-            ASSERT_EQ(mutations.size(), 2);
+        load_mutation loader(duplicator.get(), replica.get());
+        pipeline::do_when<decree, mutation_tuple_set> end(
+            [](decree &&d, mutation_tuple_set &&mutations) {
+                ASSERT_EQ(d, 2);
+                ASSERT_EQ(mutations.size(), 2);
 
-            auto it = mutations.begin();
-            ASSERT_EQ(std::get<0>(*it), 1);
+                auto it = mutations.begin();
+                ASSERT_EQ(std::get<0>(*it), 1);
 
-            it = std::next(it);
-            ASSERT_EQ(std::get<0>(*it), 2);
-        });
+                it = std::next(it);
+                ASSERT_EQ(std::get<0>(*it), 2);
+            });
 
         pipeline::base base;
         base.thread_pool(LPC_DUPLICATION_LOAD_MUTATIONS)
