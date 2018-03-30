@@ -98,7 +98,7 @@ struct base : environment
     // ```
     //   base.schedule([&base]() { base.run_pipeline(); });
     //   base.pause();
-    //   base.wait_all();
+    //   base.wait_all(); // the pipeline won't stop.
     // ```
     //
     void run_pipeline();

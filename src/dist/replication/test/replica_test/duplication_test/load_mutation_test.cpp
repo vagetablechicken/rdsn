@@ -80,14 +80,9 @@ struct load_mutation_test : public mutation_duplicator_test_base
     {
         mutation_batch batch;
 
-        auto mut = create_test_mutation(1, "");
-        mut->data.updates.back().code = RPC_REPLICATION_WRITE_EMPTY;
-        batch.add(mut);
-
         // commit to 1
-        mut = create_test_mutation(2, "");
-        mut->data.updates.back().code = RPC_REPLICATION_WRITE_EMPTY;
-        batch.add(mut);
+        batch.add(create_write_empty_mutation(1));
+        batch.add(create_write_empty_mutation(2));
 
         // initiates private log.
         mutation_log_ptr mlog = new mutation_log_private(

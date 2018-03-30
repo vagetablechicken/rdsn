@@ -110,6 +110,13 @@ struct mutation_duplicator_test_base : replica_duplication_test_base
         return mu;
     }
 
+    mutation_ptr create_write_empty_mutation(int64_t decree)
+    {
+        mutation_ptr mut = create_test_mutation(decree, "");
+        mut->data.updates.back().code = RPC_REPLICATION_WRITE_EMPTY;
+        return mut;
+    }
+
     std::unique_ptr<mutation_duplicator> create_test_duplicator()
     {
         duplication_entry dup_ent;

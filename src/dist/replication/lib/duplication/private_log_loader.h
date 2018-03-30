@@ -44,12 +44,17 @@ namespace replication {
 /// Loads mutations from private log into memory.
 /// It works in THREAD_POOL_REPLICATION_LONG (LPC_DUPLICATION_LOAD_MUTATIONS),
 /// which permits tasks to be executed in a blocking way.
+/// NOTE: The resulted `mutation_tuple_set` may be empty.
 struct load_from_private_log : pipeline::when<>, pipeline::result<decree, mutation_tuple_set>
 {
 public:
     void run() override;
 
-    void set_start_decree(decree start_decree) { _start_decree = start_decree; }
+    void set_start_decree(decree start_decree)
+    {
+        dassert(start_decree > 0, "");
+        _start_decree = start_decree;
+    }
 
     /// =================================== Implementation =================================== ///
 

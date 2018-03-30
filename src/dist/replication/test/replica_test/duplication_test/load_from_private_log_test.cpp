@@ -65,8 +65,7 @@ struct load_from_private_log_test : public mutation_duplicator_test_base
 
         auto files = log_utils::list_all_files_or_die(log_dir);
 
-        // ensure first file is chosen if start_decree = 0.
-        load.set_start_decree(0);
+        load.set_start_decree(1);
         load.find_log_file_to_start(files);
         ASSERT_TRUE(load._current);
         ASSERT_EQ(load._current->index(), 1);
@@ -87,27 +86,6 @@ struct load_from_private_log_test : public mutation_duplicator_test_base
         ASSERT_TRUE(load._current);
         ASSERT_EQ(load._current->index(), last_idx);
         ASSERT_FALSE(load._next);
-    }
-
-    // Ensure mutation_duplicator can correctly handle real-world log file (log.1.0).
-    // There are 4 puts, 3 write empties in log.1.0: PUT, PUT, PUT, EMPTY, PUT, EMPTY, EMPTY.
-    void test_handle_real_private_log()
-    {
-        constexpr int total_writes_size = 4;
-        constexpr int total_mutations_size = 7;
-
-        ASSERT_TRUE(utils::filesystem::rename_path("log.1.0", log_dir + "/log.1.0"));
-
-        {
-            /// load log.1.0
-            mutation_log_ptr mlog = new mutation_log_private(
-                replica->dir(), 4, replica->get_gpid(), nullptr, 1024, 512, 10000);
-            replica->init_private_log(mlog);
-            mlog->update_max_commit_on_disk(total_mutations_size); // assume all logs are committed.
-        }
-
-        /// write empty will be ignored.
-        load_and_wait_all_entries_loaded(4);
     }
 
     void test_start_duplication(int num_entries, int private_log_size_mb)
@@ -134,23 +112,28 @@ struct load_from_private_log_test : public mutation_duplicator_test_base
             dsn_task_tracker_wait_all(mlog->tracker());
         }
 
-        load_and_wait_all_entries_loaded(num_entries);
+        load_and_wait_all_entries_loaded(num_entries, num_entries);
     }
 
-    mutation_tuple_set load_and_wait_all_entries_loaded(int total)
+    mutation_tuple_set load_and_wait_all_entries_loaded(int total, int last_decree)
     {
         load_from_private_log load(replica.get());
+        load.set_start_decree(1);
+
         mutation_tuple_set loaded_mutations;
 
         pipeline::do_when<decree, mutation_tuple_set> end_stage(
-            [&loaded_mutations, &load, total](decree &&d, mutation_tuple_set &&mutations) {
+            [&loaded_mutations, &load, total, last_decree](decree &&d,
+                                                           mutation_tuple_set &&mutations) {
+                derror_f("d: {}", d);
+
                 // we create one mutation_update per mutation
                 // the mutations are started from 1
                 for (mutation_tuple mut : mutations) {
                     loaded_mutations.emplace(mut);
                 }
 
-                if (loaded_mutations.size() < total) {
+                if (loaded_mutations.size() < total || d < last_decree) {
                     load.run();
                 }
             });
@@ -166,8 +149,6 @@ struct load_from_private_log_test : public mutation_duplicator_test_base
 };
 
 TEST_F(load_from_private_log_test, find_log_file_to_start) { test_find_log_file_to_start(); }
-
-TEST_F(load_from_private_log_test, handle_real_private_log) { test_handle_real_private_log(); }
 
 TEST_F(load_from_private_log_test, start_duplication_10000_4MB)
 {
@@ -187,6 +168,42 @@ TEST_F(load_from_private_log_test, start_duplication_10000_1MB)
 TEST_F(load_from_private_log_test, start_duplication_50000_1MB)
 {
     test_start_duplication(50000, 1);
+}
+
+// Ensure mutation_duplicator can correctly handle real-world log file (log.1.0).
+// There are 4 puts, 3 write empties in log.1.0: PUT, PUT, PUT, EMPTY, PUT, EMPTY, EMPTY.
+TEST_F(load_from_private_log_test, handle_real_private_log)
+{
+    ASSERT_TRUE(
+        utils::filesystem::rename_path("log.1.0.handle_real_private_log", log_dir + "/log.1.0"));
+
+    {
+        /// load log.1.0
+        mutation_log_ptr mlog = new mutation_log_private(
+            replica->dir(), 4, replica->get_gpid(), nullptr, 1024, 512, 10000);
+        replica->init_private_log(mlog);
+    }
+
+    /// write empty will be ignored.
+    /// up to 6 are committed.
+    load_and_wait_all_entries_loaded(4, 6);
+}
+
+// There are 3 write empties in log.1.0
+TEST_F(load_from_private_log_test, all_loaded_are_write_empties)
+{
+    ASSERT_TRUE(utils::filesystem::rename_path("log.1.0.all_loaded_are_write_empties",
+                                               log_dir + "/log.1.0"));
+
+    {
+        /// load log.1.0
+        mutation_log_ptr mlog = new mutation_log_private(
+            replica->dir(), 4, replica->get_gpid(), nullptr, 1024, 512, 10000);
+        replica->init_private_log(mlog);
+    }
+
+    /// up to 2 are committed.
+    load_and_wait_all_entries_loaded(0, 2);
 }
 
 } // namespace replication

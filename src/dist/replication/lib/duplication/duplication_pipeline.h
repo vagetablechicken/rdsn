@@ -72,6 +72,13 @@ struct ship_mutation : pipeline::when<decree, mutation_tuple_set>, public pipeli
     void run(decree &&last_decree, mutation_tuple_set &&in) override
     {
         _last_decree = last_decree;
+
+        if (in.empty()) {
+            _duplicator->update_state(duplication_view().set_last_decree(_last_decree));
+            step_down_next_stage();
+            return;
+        }
+
         _pending = std::move(in);
         for (mutation_tuple mut : _pending) {
             ship(mut);

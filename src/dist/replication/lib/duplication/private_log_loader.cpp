@@ -79,15 +79,6 @@ void load_from_private_log::find_log_file_to_start(const std::vector<std::string
     auto begin = log_file_map.begin();
     decree d = _start_decree;
 
-    if (d == 0) { // start from first log file if it's a new duplication.
-        _current = begin->second;
-        _next = nullptr;
-        if (log_file_map.size() > 1) {
-            _next = std::next(begin)->second;
-        }
-        return;
-    }
-
     dassert_f(begin->second->previous_log_max_decree(get_gpid()) < d,
               "log file containing decree({}) may have been compacted",
               d);
@@ -122,9 +113,9 @@ void load_from_private_log::load_from_log_file()
             return;
         }
 
-        dwarn_replica("error occurred while loading mutation logs: [err: {}, file: {}]",
-                      err,
-                      _current->path());
+        derror_replica("error occurred while loading mutation logs: [err: {}, file: {}]",
+                       err,
+                       _current->path());
 
         // reload infinitely if error
         _read_from_start = true;
@@ -134,11 +125,8 @@ void load_from_private_log::load_from_log_file()
 
     _read_from_start = false;
 
-    if (_mutation_batch.empty()) {
-        repeat(10_s);
-    } else {
-        step_down_next_stage(_mutation_batch.last_decree(), _mutation_batch.move_all_mutations());
-    }
+    // update last_decree even for empty batch.
+    step_down_next_stage(_mutation_batch.last_decree(), _mutation_batch.move_all_mutations());
 }
 
 } // namespace replication
