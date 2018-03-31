@@ -47,6 +47,13 @@ struct environment
                          delay_ms);
     }
 
+    /// Schedule the task in other thread pool.
+    template <typename F>
+    void schedule_in(task_code tc, F &&f, std::chrono::milliseconds delay_ms = 0_ms)
+    {
+        tasking::enqueue(tc, __conf.task_tracker, std::forward<F>(f), __conf.thread_hash, delay_ms);
+    }
+
     struct
     {
         task_code thread_pool_code;
@@ -163,7 +170,10 @@ struct base : environment
             using ArgsTupleType = typename Stage::ArgsTupleType;
 
             this_stage->func = [next](ArgsTupleType &&args) mutable {
-                dsn::apply(&NextStage::run, std::tuple_cat(std::make_tuple(next), std::move(args)));
+                next->schedule([]() {
+                    dsn::apply(&NextStage::run,
+                               std::tuple_cat(std::make_tuple(next), std::move(args)));
+                });
             };
         }
 

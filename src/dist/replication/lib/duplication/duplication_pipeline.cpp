@@ -52,23 +52,23 @@ void load_mutation::run()
         return;
     }
 
-    // try load from cache
-    if (_start_decree >= _log_in_cache->min_decree()) {
-        for (decree d = _start_decree; d <= _log_in_cache->last_committed_decree(); d++) {
-            auto mu = _log_in_cache->get_mutation_by_decree(d);
-            dassert(mu != nullptr, "");
-
-            add_mutation_if_valid(mu, _loaded_mutations);
-        }
-
-        if(_loaded_mutations.empty()) {
-            repeat(10_s);
-            return;
-        }
-
-        step_down_next_stage(_log_in_cache->last_committed_decree(), std::move(_loaded_mutations));
-        return;
-    }
+//    // try load from cache
+//    if (_start_decree >= _log_in_cache->min_decree()) {
+//        for (decree d = _start_decree; d <= _log_in_cache->last_committed_decree(); d++) {
+//            auto mu = _log_in_cache->get_mutation_by_decree(d);
+//            dassert(mu != nullptr, "");
+//
+//            add_mutation_if_valid(mu, _loaded_mutations);
+//        }
+//
+//        if(_loaded_mutations.empty()) {
+//            repeat(10_s);
+//            return;
+//        }
+//
+//        step_down_next_stage(_log_in_cache->last_committed_decree(), std::move(_loaded_mutations));
+//        return;
+//    }
 
     // load from private log
     _log_on_disk->load_mutations_from_decree(_start_decree);

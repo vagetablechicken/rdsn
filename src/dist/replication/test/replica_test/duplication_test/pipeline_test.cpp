@@ -57,4 +57,34 @@ TEST(pipeline_test, pause)
     }
 }
 
+TEST(pipeline_test, link_pipe)
+{
+    clientlet tracker;
+
+    struct stage2 : pipeline::when<>, pipeline::result<>
+    {
+        void run() override { step_down_next_stage(); }
+    };
+
+    {
+
+        pipeline::base base1;
+        pipeline::do_when<> s1([&s1]() { s1.repeat(1_s); });
+        base1.thread_pool(LPC_DUPLICATION_LOAD_MUTATIONS).task_tracker(&tracker).from(&s1);
+
+        // base2 executes s2, then executes s1 in another pipeline.
+        pipeline::base base2;
+        stage2 s2;
+        base2.thread_pool(LPC_DUPLICATE_MUTATIONS).task_tracker(&tracker).from(&s2).link_pipe(&s1);
+
+        base2.run_pipeline();
+
+        base1.pause();
+        base2.pause();
+
+        base2.wait_all();
+    }
+
+}
+
 } // namespace dsn
