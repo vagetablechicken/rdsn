@@ -24,7 +24,7 @@
  * THE SOFTWARE.
  */
 
-#include "dist/replication/lib/duplication/private_log_loader.h"
+#include "dist/replication/lib/duplication/load_from_private_log.h"
 
 #include "duplication_test_base.h"
 

@@ -84,7 +84,6 @@ TEST(pipeline_test, link_pipe)
 
         base2.wait_all();
     }
-
 }
 
 } // namespace dsn

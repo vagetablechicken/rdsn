@@ -25,7 +25,7 @@
  */
 
 #include "mutation_duplicator.h"
-#include "private_log_loader.h"
+#include "load_from_private_log.h"
 #include "duplication_pipeline.h"
 
 #include <dsn/dist/replication/replication_app_base.h>
@@ -46,6 +46,8 @@ mutation_duplicator::mutation_duplicator(const duplication_entry &ent, replica *
     }
     _view->status = ent.status;
 
+    /// ===== pipeline declaration ===== ///
+
     thread_pool(LPC_DUPLICATE_MUTATIONS)
         .task_tracker(tracker())
         .thread_hash(get_gpid().thread_hash());
@@ -63,7 +65,11 @@ void mutation_duplicator::start()
     run_pipeline();
 }
 
-mutation_duplicator::~mutation_duplicator() = default;
+mutation_duplicator::~mutation_duplicator()
+{
+    pause();
+    wait_all();
+}
 
 } // namespace replication
 } // namespace dsn

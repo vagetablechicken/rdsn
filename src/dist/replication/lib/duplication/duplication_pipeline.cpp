@@ -27,7 +27,7 @@
 #include <dsn/dist/replication/replication_app_base.h>
 
 #include "duplication_pipeline.h"
-#include "private_log_loader.h"
+#include "load_from_private_log.h"
 
 namespace dsn {
 namespace replication {
@@ -52,36 +52,41 @@ void load_mutation::run()
         return;
     }
 
-//    // try load from cache
-//    if (_start_decree >= _log_in_cache->min_decree()) {
-//        for (decree d = _start_decree; d <= _log_in_cache->last_committed_decree(); d++) {
-//            auto mu = _log_in_cache->get_mutation_by_decree(d);
-//            dassert(mu != nullptr, "");
-//
-//            add_mutation_if_valid(mu, _loaded_mutations);
-//        }
-//
-//        if(_loaded_mutations.empty()) {
-//            repeat(10_s);
-//            return;
-//        }
-//
-//        step_down_next_stage(_log_in_cache->last_committed_decree(), std::move(_loaded_mutations));
-//        return;
-//    }
+    //    // try load from cache
+    //    if (_start_decree >= _log_in_cache->min_decree()) {
+    //        for (decree d = _start_decree; d <= _log_in_cache->last_committed_decree(); d++) {
+    //            auto mu = _log_in_cache->get_mutation_by_decree(d);
+    //            dassert(mu != nullptr, "");
+    //
+    //            add_mutation_if_valid(mu, _loaded_mutations);
+    //        }
+    //
+    //        if(_loaded_mutations.empty()) {
+    //            repeat(10_s);
+    //            return;
+    //        }
+    //
+    //        step_down_next_stage(_log_in_cache->last_committed_decree(),
+    //        std::move(_loaded_mutations));
+    //        return;
+    //    }
 
     // load from private log
-    _log_on_disk->load_mutations_from_decree(_start_decree);
+    _log_on_disk->set_start_decree(_start_decree);
+    _log_on_disk->async();
 }
 
 load_mutation::~load_mutation() = default;
 
 load_mutation::load_mutation(mutation_duplicator *duplicator, replica *r)
-    : _log_on_disk(new private_log_loader(duplicator)),
+    : _log_on_disk(new load_from_private_log(r)),
       _log_in_cache(r->_prepare_list),
       _replica(r),
       _duplicator(duplicator)
 {
+    // load from on-disk private log -> ship via duplicator
+    duplicator->fork(_log_on_disk.get(), LPC_DUPLICATION_LOAD_MUTATIONS)
+        .link_pipe(duplicator->_ship.get());
 }
 
 void ship_mutation::ship(mutation_tuple &mut)

@@ -83,7 +83,10 @@ public:
     // Switches to the log file with index = current_log_index + 1.
     void switch_to_next_log_file();
 
-    load_from_private_log(replica *r) : _private_log(r->private_log()), _gpid(r->get_gpid()) {}
+    explicit load_from_private_log(replica *r)
+        : _private_log(r->private_log()), _gpid(r->get_gpid())
+    {
+    }
 
 private:
     friend class load_from_private_log_test;
@@ -97,29 +100,6 @@ private:
     mutation_batch _mutation_batch;
 
     decree _start_decree{0};
-};
-
-struct private_log_loader : pipeline::base
-{
-public:
-    explicit private_log_loader(mutation_duplicator *duplicator) : _load(duplicator->_replica)
-    {
-        thread_pool(LPC_DUPLICATION_LOAD_MUTATIONS)
-            .task_tracker(duplicator->tracker())
-            .thread_hash(duplicator->get_gpid().thread_hash());
-
-        // load -> ship via duplicator
-        from(&_load).link_pipe(duplicator->_ship.get());
-    }
-
-    void load_mutations_from_decree(decree start_decree)
-    {
-        _load.set_start_decree(start_decree);
-        run_pipeline();
-    }
-
-private:
-    load_from_private_log _load;
 };
 
 } // namespace replication

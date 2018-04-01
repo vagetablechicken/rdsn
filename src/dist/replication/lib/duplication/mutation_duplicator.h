@@ -82,7 +82,7 @@ public:
     // The thread may be seriously blocked under the destruction.
     // Take care when running in THREAD_POOL_REPLICATION, though
     // duplication removal is extremely rare.
-    ~mutation_duplicator() override;
+    ~mutation_duplicator();
 
     // Thread-safe
     void start();
@@ -125,7 +125,6 @@ private:
 
     friend struct load_mutation;
     friend struct ship_mutation;
-    friend class private_log_loader;
 
     const dupid_t _id;
     const std::string _remote_cluster_address;

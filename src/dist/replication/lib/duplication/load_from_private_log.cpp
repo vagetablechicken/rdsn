@@ -24,7 +24,7 @@
  * THE SOFTWARE.
  */
 
-#include "private_log_loader.h"
+#include "load_from_private_log.h"
 
 namespace dsn {
 namespace replication {

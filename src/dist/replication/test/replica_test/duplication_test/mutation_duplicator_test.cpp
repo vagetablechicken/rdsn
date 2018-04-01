@@ -29,7 +29,7 @@
 #include <dsn/utility/filesystem.h>
 
 #include "dist/replication/lib/mutation_log_utils.h"
-#include "dist/replication/lib/duplication/private_log_loader.h"
+#include "dist/replication/lib/duplication/load_from_private_log.h"
 
 namespace dsn {
 namespace apps {

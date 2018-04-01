@@ -47,13 +47,6 @@ struct environment
                          delay_ms);
     }
 
-    /// Schedule the task in other thread pool.
-    template <typename F>
-    void schedule_in(task_code tc, F &&f, std::chrono::milliseconds delay_ms = 0_ms)
-    {
-        tasking::enqueue(tc, __conf.task_tracker, std::forward<F>(f), __conf.thread_hash, delay_ms);
-    }
-
     struct
     {
         task_code thread_pool_code;
@@ -69,10 +62,10 @@ struct result
 
     void step_down_next_stage(Args &&... args)
     {
-        func(std::make_tuple(std::forward<Args>(args)...));
+        __func(std::make_tuple(std::forward<Args>(args)...));
     }
 
-    std::function<void(ArgsTupleType &&)> func;
+    std::function<void(ArgsTupleType &&)> __func;
 };
 
 //
@@ -91,12 +84,6 @@ struct result
 //
 struct base : environment
 {
-    virtual ~base()
-    {
-        pause();
-        wait_all();
-    }
-
     // Start this pipeline.
     // NOTE: Be careful when pipeline starting and pausing are running concurrently,
     //       though it's internally synchronized, the actual order is still non-deterministic
@@ -141,55 +128,64 @@ struct base : environment
     }
 
     /// === Pipeline Declaration === ///
+    /// Declaration of pipeline is not thread-safe.
 
     template <typename Stage>
-    struct pipeline_node
+    struct node
     {
         template <typename NextStage>
-        pipeline_node<NextStage> link(NextStage *next)
+        node<NextStage> link(NextStage *next)
         {
             using ArgsTupleType = typename Stage::ArgsTupleType;
 
             next->__conf = this_stage->__conf;
             next->__pipeline = this_stage->__pipeline;
-            this_stage->func = [next](ArgsTupleType &&args) mutable {
+            this_stage->__func = [next](ArgsTupleType &&args) mutable {
                 if (next->paused()) {
                     return;
                 }
                 dsn::apply(&NextStage::run, std::tuple_cat(std::make_tuple(next), std::move(args)));
             };
-            return {next};
+            return node<NextStage>(next);
         }
 
-        /// Link to stage of another pipeline.
         template <typename NextStage>
-        void link_pipe(NextStage *next)
+        node<NextStage> link_pipe(NextStage *next)
         {
-            // lazily get the result type of this stage,
-            // since it's probable not inherited from result<>.
             using ArgsTupleType = typename Stage::ArgsTupleType;
 
-            this_stage->func = [next](ArgsTupleType &&args) mutable {
-                next->schedule([]() {
-                    dsn::apply(&NextStage::run,
-                               std::tuple_cat(std::make_tuple(next), std::move(args)));
-                });
+            this_stage->__func = [next](ArgsTupleType &&args) mutable {
+                dsn::apply(&NextStage::async,
+                           std::tuple_cat(std::make_tuple(next), std::move(args)));
             };
+            return node<NextStage>(next);
         }
 
-        pipeline_node(Stage *s) : this_stage(s) {}
+        explicit node(Stage *s) : this_stage(s) {}
 
     private:
         Stage *this_stage;
     };
 
     template <typename Stage>
-    pipeline_node<Stage> from(Stage *start)
+    node<Stage> from(Stage *start)
     {
         start->__conf = __conf;
         start->__pipeline = this;
         _root_stage = start;
-        return {start};
+        return node<Stage>(start);
+    }
+
+    // Create a fork of the pipeline, which shares the same task tracker,
+    // but with different thread pool, thread hash.
+    template <typename NextStage>
+    node<NextStage> fork(NextStage *next, task_code tc, int thread_hash = 0)
+    {
+        next->__conf.thread_pool_code = tc;
+        next->__conf.thread_hash = thread_hash;
+
+        next->__pipeline = this;
+        return node<NextStage>(next);
     }
 
 private:
@@ -202,6 +198,7 @@ private:
 template <typename... Args>
 struct when : environment
 {
+    /// Run this stage within current context.
     virtual void run(Args &&... in) = 0;
 
     void repeat(Args &&... in, std::chrono::milliseconds delay_ms = 0_ms)
@@ -211,17 +208,23 @@ struct when : environment
             if (paused()) {
                 return;
             }
-            dsn::apply(&when<Args...>::run, args);
+            dsn::apply(&when<Args...>::run, std::move(args));
         },
                  delay_ms);
     }
+
+    /// Run this stage asynchronously in its environment.
+    void async(Args &&... in) { repeat(std::forward<Args>(in)...); }
 
     bool paused() { return __pipeline->paused(); }
 
 private:
     friend class base;
 
-    base *__pipeline;
+    template <typename Stage>
+    friend class node;
+
+    base *__pipeline{nullptr};
 };
 
 template <typename... Args>
