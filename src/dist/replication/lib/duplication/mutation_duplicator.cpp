@@ -53,10 +53,10 @@ mutation_duplicator::mutation_duplicator(const duplication_entry &ent, replica *
         .thread_hash(get_gpid().thread_hash());
 
     // load -> ship -> load
-    _load = dsn::make_unique<load_mutation>(this, _replica);
     _ship = dsn::make_unique<ship_mutation>(this);
+    _load = dsn::make_unique<load_mutation>(this, _replica);
 
-    from(_load.get()).link(_ship.get()).link(_load.get());
+    from(*_load).link(*_ship).link(*_load);
 }
 
 void mutation_duplicator::start()

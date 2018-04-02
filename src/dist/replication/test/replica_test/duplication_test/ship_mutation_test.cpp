@@ -55,8 +55,8 @@ struct ship_mutation_test : public mutation_duplicator_test_base
         pipeline::base base;
         base.thread_pool(LPC_DUPLICATION_LOAD_MUTATIONS)
             .task_tracker(replica.get())
-            .from(&shipper)
-            .link(&end);
+            .from(shipper)
+            .link(end);
 
         mutation_tuple result;
         bool error_flag = true;

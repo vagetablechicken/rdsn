@@ -134,31 +134,34 @@ struct base : environment
     struct node
     {
         template <typename NextStage>
-        node<NextStage> link(NextStage *next)
+        node<NextStage> link(NextStage &next)
         {
             using ArgsTupleType = typename Stage::ArgsTupleType;
 
-            next->__conf = this_stage->__conf;
-            next->__pipeline = this_stage->__pipeline;
-            this_stage->__func = [next](ArgsTupleType &&args) mutable {
-                if (next->paused()) {
+            next.__conf = this_stage->__conf;
+            next.__pipeline = this_stage->__pipeline;
+            this_stage->__func = [next_ptr = &next](ArgsTupleType && args) mutable
+            {
+                if (next_ptr->paused()) {
                     return;
                 }
-                dsn::apply(&NextStage::run, std::tuple_cat(std::make_tuple(next), std::move(args)));
+                dsn::apply(&NextStage::run,
+                           std::tuple_cat(std::make_tuple(next_ptr), std::move(args)));
             };
-            return node<NextStage>(next);
+            return node<NextStage>(&next);
         }
 
         template <typename NextStage>
-        node<NextStage> link_pipe(NextStage *next)
+        node<NextStage> link_pipe(NextStage &next)
         {
             using ArgsTupleType = typename Stage::ArgsTupleType;
 
-            this_stage->__func = [next](ArgsTupleType &&args) mutable {
+            this_stage->__func = [next_ptr = &next](ArgsTupleType && args) mutable
+            {
                 dsn::apply(&NextStage::async,
-                           std::tuple_cat(std::make_tuple(next), std::move(args)));
+                           std::tuple_cat(std::make_tuple(next_ptr), std::move(args)));
             };
-            return node<NextStage>(next);
+            return node<NextStage>(&next);
         }
 
         explicit node(Stage *s) : this_stage(s) {}
@@ -168,24 +171,24 @@ struct base : environment
     };
 
     template <typename Stage>
-    node<Stage> from(Stage *start)
+    node<Stage> from(Stage &start)
     {
-        start->__conf = __conf;
-        start->__pipeline = this;
-        _root_stage = start;
-        return node<Stage>(start);
+        start.__conf = __conf;
+        start.__pipeline = this;
+        _root_stage = &start;
+        return node<Stage>(&start);
     }
 
     // Create a fork of the pipeline, which shares the same task tracker,
     // but with different thread pool, thread hash.
     template <typename NextStage>
-    node<NextStage> fork(NextStage *next, task_code tc, int thread_hash = 0)
+    node<NextStage> fork(NextStage &next, task_code tc, int thread_hash)
     {
-        next->__conf.thread_pool_code = tc;
-        next->__conf.thread_hash = thread_hash;
+        next.__conf.thread_pool_code = tc;
+        next.__conf.thread_hash = thread_hash;
 
-        next->__pipeline = this;
-        return node<NextStage>(next);
+        next.__pipeline = this;
+        return node<NextStage>(&next);
     }
 
 private:

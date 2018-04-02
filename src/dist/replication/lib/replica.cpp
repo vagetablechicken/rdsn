@@ -434,6 +434,10 @@ void replica::close()
     }
 
     _counter_private_log_size.clear();
+
+    // duplication_impl may have ongoing tasks.
+    // release it before release replica.
+    _duplication_impl.reset();
 }
 }
 } // namespace

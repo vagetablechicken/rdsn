@@ -68,8 +68,8 @@ struct load_mutation_test : public mutation_duplicator_test_base
         pipeline::base base;
         base.thread_pool(LPC_DUPLICATION_LOAD_MUTATIONS)
             .task_tracker(replica.get())
-            .from(&loader)
-            .link(&end);
+            .from(loader)
+            .link(end);
 
         loader.run();
 
@@ -103,8 +103,8 @@ struct load_mutation_test : public mutation_duplicator_test_base
         base.thread_pool(LPC_DUPLICATION_LOAD_MUTATIONS)
             .task_tracker(replica.get())
             .thread_hash(replica->get_gpid().thread_hash()) // set hash to ensure thread safety
-            .from(&loader)
-            .link(&end);
+            .from(loader)
+            .link(end);
 
         /// loader must repeat since all mutations are WRITE_EMPTY.
         loader.run();

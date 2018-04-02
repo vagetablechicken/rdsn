@@ -125,8 +125,6 @@ struct load_from_private_log_test : public mutation_duplicator_test_base
         pipeline::do_when<decree, mutation_tuple_set> end_stage(
             [&loaded_mutations, &load, total, last_decree](decree &&d,
                                                            mutation_tuple_set &&mutations) {
-                derror_f("d: {}", d);
-
                 // we create one mutation_update per mutation
                 // the mutations are started from 1
                 for (mutation_tuple mut : mutations) {
@@ -138,7 +136,7 @@ struct load_from_private_log_test : public mutation_duplicator_test_base
                 }
             });
 
-        duplicator->from(&load).link(&end_stage);
+        duplicator->from(load).link(end_stage);
         duplicator->run_pipeline();
         duplicator->wait_all();
 
