@@ -102,6 +102,8 @@ replication_options::replication_options()
     max_concurrent_uploading_file_count = 10;
 
     duplication_sync_interval_ms = 5000;
+
+    manual_compact_min_interval_seconds = 3600;
 }
 
 replication_options::~replication_options() {}
@@ -475,6 +477,13 @@ void replication_options::initialize()
                                     duplication_sync_interval_ms,
                                     "The period of time (in ms) that the replica stub sends "
                                     "duplication_sync rpc to meta server.");
+
+    manual_compact_min_interval_seconds = (int32_t)dsn_config_get_value_uint64(
+        "replication",
+        "manual_compact_min_interval_seconds",
+        manual_compact_min_interval_seconds,
+        "minimal interval time in seconds to start a new manual compaction, "
+        "<= 0 means disable manual compaction");
 
     replica_helper::load_meta_servers(meta_servers);
 

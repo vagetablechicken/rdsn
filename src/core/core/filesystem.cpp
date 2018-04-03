@@ -33,6 +33,7 @@
  *     xxxx-xx-xx, author, fix bug about xxx
  */
 
+#include <dsn/c/api_utilities.h>
 #include <dsn/utility/filesystem.h>
 #include <sys/stat.h>
 #include <errno.h>

@@ -120,6 +120,8 @@ public:
 
     uint64_t duplication_sync_interval_ms;
 
+    int32_t manual_compact_min_interval_seconds;
+
 public:
     replication_options();
     void initialize();

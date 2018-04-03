@@ -34,8 +34,6 @@
 namespace dsn {
 namespace replication {
 
-class private_log_loader;
-
 using namespace dsn::literals::chrono_literals;
 
 struct load_mutation : pipeline::when<>, pipeline::result<decree, mutation_tuple_set>

@@ -285,15 +285,30 @@ void replica::on_learn(dsn_message_t msg, const learn_request &request)
         derror("%s: on_learn[%016" PRIx64
                "]: learner = %s, learner's last_committed_decree_in_app is newer than learnee, "
                "learner_app_committed_decree = %" PRId64 ", local_committed_decree = %" PRId64
-               ", commit local hard",
+               ", commit local soft",
                name(),
                request.signature,
                request.learner.to_string(),
                request.last_committed_decree_in_app,
                local_committed_decree);
 
-        _prepare_list->commit(request.last_committed_decree_in_app, COMMIT_TO_DECREE_HARD);
+        // we shouldn't commit mutations hard coz these mutations may preparing on another learner
+        _prepare_list->commit(request.last_committed_decree_in_app, COMMIT_TO_DECREE_SOFT);
         local_committed_decree = last_committed_decree();
+
+        if (request.last_committed_decree_in_app > local_committed_decree) {
+            derror("%s: on_learn[%016" PRIx64 "]: try to commit primary to %" PRId64
+                   ", still less than learner(%s)'s committed decree(%" PRId64
+                   "), wait mutations to be commitable",
+                   name(),
+                   request.signature,
+                   local_committed_decree,
+                   request.learner.to_string(),
+                   request.last_committed_decree_in_app);
+            response.err = ERR_INCONSISTENT_STATE;
+            reply(msg, response);
+            return;
+        }
     }
 
     dassert(request.last_committed_decree_in_app <= local_committed_decree,
@@ -524,9 +539,10 @@ void replica::on_learn_reply(error_code err, learn_request &&req, learn_response
     _stub->_counter_replicas_learning_recent_copy_buffer_size->add(resp.state.meta.length());
 
     if (resp.err != ERR_OK) {
-        if (resp.err == ERR_INACTIVE_STATE) {
-            dwarn("%s: on_learn_reply[%016" PRIx64 "]: learnee = %s, learnee is updating ballot, "
-                  "delay to start another round of learning",
+        if (resp.err == ERR_INACTIVE_STATE || resp.err == ERR_INCONSISTENT_STATE) {
+            dwarn("%s: on_learn_reply[%016" PRIx64
+                  "]: learnee = %s, learnee is updating ballot(inactive state) or "
+                  "reconciliation(inconsistent state), delay to start another round of learning",
                   name(),
                   req.signature,
                   resp.config.primary.to_string());

@@ -36,7 +36,7 @@
 #include <dsn/service_api_c.h>
 #include <dsn/tool_api.h>
 #include <dsn/utility/enum_helper.h>
-#include <dsn/cpp/auto_codes.h>
+#include <dsn/tool-api/auto_codes.h>
 #include <dsn/cpp/serialization.h>
 #include <dsn/tool-api/task_spec.h>
 #include <dsn/tool-api/zlock_provider.h>
@@ -693,8 +693,10 @@ DSN_API void dsn_file_write_vector(dsn_handle_t file,
     callback->aio()->file_offset = offset;
     callback->aio()->type = ::dsn::AIO_Write;
     for (int i = 0; i < buffer_count; i++) {
-        callback->_unmerged_write_buffers.push_back(buffers[i]);
-        callback->aio()->buffer_size += buffers[i].size;
+        if (buffers[i].size > 0) {
+            callback->_unmerged_write_buffers.push_back(buffers[i]);
+            callback->aio()->buffer_size += buffers[i].size;
+        }
     }
 
     ::dsn::task::get_current_disk()->write(callback);

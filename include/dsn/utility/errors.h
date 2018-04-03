@@ -26,7 +26,7 @@
 
 #pragma once
 
-#include <dsn/cpp/auto_codes.h>
+#include <dsn/utility/error_code.h>
 #include <dsn/utility/smart_pointers.h>
 #include <dsn/utility/string_view.h>
 

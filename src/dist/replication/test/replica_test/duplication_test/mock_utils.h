@@ -74,6 +74,8 @@ public:
     ::dsn::replication::decree last_durable_decree() const override { return 0; }
 
     int on_request(dsn_message_t request) override { return 0; }
+
+    void manual_compact() override {}
 };
 
 class mock_replica : public replica
