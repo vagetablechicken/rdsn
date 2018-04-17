@@ -74,4 +74,9 @@ inline void format_arg(fmt::BasicFormatter<char> &f, const char *format_str, dsn
     f.writer().write(p.to_string());
 }
 
+inline void format_arg(fmt::BasicFormatter<char> &f, const char *format_str, dsn::string_view p)
+{
+    f.writer().write(std::string(p));
+}
+
 } // namespace fmt
