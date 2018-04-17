@@ -60,8 +60,46 @@ struct result
 {
     typedef std::tuple<Args...> ArgsTupleType;
 
+    // Step down to next stage.
+    // NOTE: Remember to exit from caller function after `step_down_next_stage`.
+    // For example:
+    //
+    // ```
+    //   pipeline::base base;
+    //   ping_rpc rpc = ...;
+    //
+    //   pipeline::do_when<> ping([&ping]() {
+    //        bool ok = rpc.call();
+    //        if(ok) {
+    //            step_down_next_stage();
+    //            // when steps out, it goes to repeat this stage round and round.
+    //        }
+    //        repeat(1_s); // will repeat even after stepping down to next stage.
+    //   });
+    //
+    //   base.thread_pool(LPC_DUPLICATE_MUTATIONS).task_tracker(&tracker).from(&s1);
+    //   base.run_pipeline();
+    //   base.wait_all();
+    // ```
+    //
+    // To fix the problem, return immediately after `step_down_next_stage`.
+    //
+    // ```
+    //   pipeline::do_when<> ping([&ping]() {
+    //        bool ok = rpc.call();
+    //        if(ok) {
+    //            step_down_next_stage();
+    //            return;
+    //        }
+    //        repeat(1_s); // will repeat even after stepping down to next stage.
+    //   });
+    // ```
+    //
     void step_down_next_stage(Args &&... args)
     {
+        if (dsn_unlikely(__func == nullptr)) {
+            dfatal("no next stage is linked");
+        }
         __func(std::make_tuple(std::forward<Args>(args)...));
     }
 
@@ -102,12 +140,7 @@ struct base : environment
     bool paused() { return _paused.load(std::memory_order_acquire); }
 
     // Await for all running tasks to complete.
-    void wait_all()
-    {
-        if (__conf.task_tracker != nullptr) {
-            dsn_task_tracker_wait_all(__conf.task_tracker->tracker());
-        }
-    }
+    void wait_all() { dsn_task_tracker_wait_all(__conf.task_tracker->tracker()); }
 
     /// === Environment Configuration === ///
 
