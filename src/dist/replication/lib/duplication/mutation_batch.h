@@ -59,6 +59,7 @@ private:
 
 using mutation_batch_u_ptr = std::unique_ptr<mutation_batch>;
 
+/// Extract mutations into mutation_tuple_set if they are not WRITE_EMPTY.
 extern void add_mutation_if_valid(mutation_ptr &, mutation_tuple_set &);
 
 } // namespace replication

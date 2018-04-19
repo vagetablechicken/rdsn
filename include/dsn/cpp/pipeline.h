@@ -166,34 +166,46 @@ struct base : environment
     template <typename Stage>
     struct node
     {
+        // pipeline supports cyclic execution.
+        // For example in "data verifier", we insert data into database, and verify
+        // if it's lost or applied. After verification we make next insert.
+        //
+        // ```
+        //      _insert = dsn::make_unique<insert_data>(...);
+        //      _verify = dsn::make_unique<verify_data>(...);
+        //      link(*_insert).link(*_verify).link(*_insert);
+        // ```
+        //
+        // Here we construct a infinite loop.
+        // When first `_insert` steps down to `_verify`, it directly calls the function
+        // `_verify->run(...)`.
+        // However when `_verify` is stepping down, in order to avoid infinite recursion
+        // which will cause stack overflow, it calls `_insert->async(..)`, which enqueues
+        // a new task into rdsn task engine.
         template <typename NextStage>
         node<NextStage> link(NextStage &next)
         {
             using ArgsTupleType = typename Stage::ArgsTupleType;
 
-            next.__conf = this_stage->__conf;
-            next.__pipeline = this_stage->__pipeline;
-            this_stage->__func = [next_ptr = &next](ArgsTupleType && args) mutable
-            {
-                if (next_ptr->paused()) {
-                    return;
-                }
-                dsn::apply(&NextStage::run,
-                           std::tuple_cat(std::make_tuple(next_ptr), std::move(args)));
-            };
-            return node<NextStage>(&next);
-        }
-
-        template <typename NextStage>
-        node<NextStage> link_pipe(NextStage &next)
-        {
-            using ArgsTupleType = typename Stage::ArgsTupleType;
-
-            this_stage->__func = [next_ptr = &next](ArgsTupleType && args) mutable
-            {
-                dsn::apply(&NextStage::async,
-                           std::tuple_cat(std::make_tuple(next_ptr), std::move(args)));
-            };
+            // link to node of existing pipeline
+            if (next.__pipeline != nullptr) {
+                this_stage->__func = [next_ptr = &next](ArgsTupleType && args) mutable
+                {
+                    dsn::apply(&NextStage::async,
+                               std::tuple_cat(std::make_tuple(next_ptr), std::move(args)));
+                };
+            } else {
+                next.__conf = this_stage->__conf;
+                next.__pipeline = this_stage->__pipeline;
+                this_stage->__func = [next_ptr = &next](ArgsTupleType && args) mutable
+                {
+                    if (next_ptr->paused()) {
+                        return;
+                    }
+                    dsn::apply(&NextStage::run,
+                               std::tuple_cat(std::make_tuple(next_ptr), std::move(args)));
+                };
+            }
             return node<NextStage>(&next);
         }
 
@@ -254,12 +266,6 @@ struct when : environment
 
     bool paused() { return __pipeline->paused(); }
 
-private:
-    friend class base;
-
-    template <typename Stage>
-    friend class node;
-
     base *__pipeline{nullptr};
 };
 
@@ -276,6 +282,8 @@ private:
 
 inline void base::run_pipeline()
 {
+    dassert(__conf.task_tracker != nullptr, "must configure task tracker");
+
     _paused.store(false, std::memory_order_release);
 
     schedule([stage = static_cast<when<> *>(_root_stage)]() {

@@ -75,7 +75,7 @@ TEST(pipeline_test, link_pipe)
         // base2 executes s2, then executes s1 in another pipeline.
         pipeline::base base2;
         stage2 s2;
-        base2.thread_pool(LPC_DUPLICATE_MUTATIONS).task_tracker(&tracker).from(s2).link_pipe(s1);
+        base2.thread_pool(LPC_DUPLICATE_MUTATIONS).task_tracker(&tracker).from(s2).link(s1);
 
         base2.run_pipeline();
 

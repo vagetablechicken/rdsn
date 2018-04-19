@@ -85,8 +85,7 @@ load_mutation::load_mutation(mutation_duplicator *duplicator, replica *r)
       _duplicator(duplicator)
 {
     // load from on-disk private log -> ship via duplicator
-    duplicator->fork(*_log_on_disk, LPC_DUPLICATION_LOAD_MUTATIONS, 0)
-        .link_pipe(*duplicator->_ship);
+    duplicator->fork(*_log_on_disk, LPC_DUPLICATION_LOAD_MUTATIONS, 0).link(*duplicator->_ship);
 }
 
 void ship_mutation::ship(mutation_tuple &mut)
