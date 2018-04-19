@@ -111,13 +111,8 @@ __pragma(warning(disable : 4127))
 #endif
 #endif
 
-#ifdef _WIN32
-#define dsn_likely(pred) pred
-#define dsn_unlikely(pred) pred
-#else
-#define dsn_likely(pred) __builtin_expect(pred, 1)
-#define dsn_unlikely(pred) __builtin_expect(pred, 0)
-#endif
+#define dsn_likely(pred) (__builtin_expect((pred), 1))
+#define dsn_unlikely(pred) (__builtin_expect((pred), 0))
 
 #ifdef _WIN32
 

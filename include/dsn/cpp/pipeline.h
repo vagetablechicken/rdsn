@@ -97,9 +97,7 @@ struct result
     //
     void step_down_next_stage(Args &&... args)
     {
-        if (dsn_unlikely(__func == nullptr)) {
-            dfatal("no next stage is linked");
-        }
+        dassert(__func != nullptr, "no next stage is linked");
         __func(std::make_tuple(std::forward<Args>(args)...));
     }
 
