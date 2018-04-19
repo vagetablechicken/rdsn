@@ -166,7 +166,7 @@ struct base : environment
     {
         // pipeline supports cyclic execution.
         // For example in "data verifier", we insert data into database, and verify
-        // if it's lost or applied. After verification we make next insert.
+        // that it is applied successfully. After verification we make next insert.
         //
         // ```
         //      _insert = dsn::make_unique<insert_data>(...);
@@ -239,7 +239,7 @@ private:
     std::atomic_bool _paused{true};
 };
 
-// A piece of execution, receiving argument `Input`, running in the environment
+// A piece of execution, receiving argument `Args`, running in the environment
 // created by `pipeline::base`.
 template <typename... Args>
 struct when : environment
