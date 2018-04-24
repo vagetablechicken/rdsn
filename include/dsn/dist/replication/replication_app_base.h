@@ -217,7 +217,13 @@ public:
                                           int request_length);
 
     // do full compaction manually.
-    virtual void manual_compact() = 0;
+    virtual void manual_compact(const std::map<std::string, std::string> &opts) = 0;
+
+    // update app envs.
+    virtual void update_app_envs(const std::map<std::string, std::string> &envs) = 0;
+
+    // query app envs.
+    virtual void query_app_envs(/*out*/ std::map<std::string, std::string> &envs) = 0;
 
 public:
     //

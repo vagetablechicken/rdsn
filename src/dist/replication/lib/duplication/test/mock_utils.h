@@ -39,43 +39,30 @@ public:
     {
     }
 
-    ::dsn::error_code start(int argc, char **argv) override { return ERR_NOT_IMPLEMENTED; }
-
-    ::dsn::error_code stop(bool clear_state) override { return ERR_NOT_IMPLEMENTED; }
-
-    ::dsn::error_code sync_checkpoint() override { return ERR_NOT_IMPLEMENTED; }
-
-    ::dsn::error_code async_checkpoint(bool is_emergency) override { return ERR_NOT_IMPLEMENTED; }
-
-    ::dsn::error_code prepare_get_checkpoint(/*out*/ ::dsn::blob &learn_req) override
+    error_code start(int, char **) override { return ERR_NOT_IMPLEMENTED; }
+    error_code stop(bool) override { return ERR_NOT_IMPLEMENTED; }
+    error_code sync_checkpoint() override { return ERR_NOT_IMPLEMENTED; }
+    error_code async_checkpoint(bool) override { return ERR_NOT_IMPLEMENTED; }
+    error_code prepare_get_checkpoint(blob &) override { return ERR_NOT_IMPLEMENTED; }
+    error_code get_checkpoint(int64_t, const blob &, learn_state &) override
     {
         return ERR_NOT_IMPLEMENTED;
     }
-
-    ::dsn::error_code get_checkpoint(int64_t learn_start,
-                                     const ::dsn::blob &learn_request,
-                                     /*out*/ learn_state &state) override
+    error_code storage_apply_checkpoint(chkpt_apply_mode, const learn_state &) override
     {
         return ERR_NOT_IMPLEMENTED;
     }
-
-    ::dsn::error_code storage_apply_checkpoint(chkpt_apply_mode mode,
-                                               const learn_state &state) override
+    error_code copy_checkpoint_to_dir(const char *, int64_t *) override
     {
         return ERR_NOT_IMPLEMENTED;
     }
-
-    ::dsn::error_code copy_checkpoint_to_dir(const char *checkpoint_dir,
-                                             /*output*/ int64_t *last_decree) override
-    {
-        return ERR_NOT_IMPLEMENTED;
-    }
-
-    ::dsn::replication::decree last_durable_decree() const override { return 0; }
-
     int on_request(dsn_message_t request) override { return 0; }
+    void manual_compact(const std::map<std::string, std::string> &) override {}
+    void update_app_envs(const std::map<std::string, std::string> &) override {}
+    void query_app_envs(std::map<std::string, std::string> &) override {}
 
-    void manual_compact() override {}
+    // We only mock this.
+    decree last_durable_decree() const override { return 0; }
 };
 
 class mock_replica : public replica

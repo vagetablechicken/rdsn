@@ -39,8 +39,8 @@
 #include <dsn/utility/factory_store.h>
 #include <dsn/utility/filesystem.h>
 #include <dsn/utility/crc.h>
-#include <dsn/utility/smart_pointers.h>
 #include <dsn/service_api_c.h>
+#include <dsn/utility/smart_pointers.h>
 #include <fstream>
 #include <sstream>
 #include <memory>
@@ -273,7 +273,14 @@ error_code replica_app_info::store(const char *file)
     int magic = 0xdeadbeef;
 
     marshall(writer, magic, DSF_THRIFT_BINARY);
-    marshall(writer, *_app, DSF_THRIFT_JSON);
+    // do not persistent envs to app info file
+    if (_app->envs.empty()) {
+        marshall(writer, *_app, DSF_THRIFT_JSON);
+    } else {
+        dsn::app_info tmp = *_app;
+        tmp.envs.clear();
+        marshall(writer, tmp, DSF_THRIFT_JSON);
+    }
 
     std::string ffile = std::string(file);
     std::string tmp_file = ffile + ".tmp";

@@ -61,7 +61,7 @@ void replica::on_client_write(task_code code, dsn_message_t request)
 
     dinfo("%s: got write request from %s",
           name(),
-          dsn_address_to_string(dsn_msg_from_address(request)));
+          dsn_msg_from_address(request).to_string());
     auto mu = _primary_states.write_queue.add_work(code, request, this);
     if (mu) {
         init_prepare(mu, false);
@@ -85,7 +85,7 @@ void replica::init_prepare(mutation_ptr &mu, bool reconciliation)
         if (_options->prepare_decree_gap_for_debug_logging > 0 &&
             mu->get_decree() % _options->prepare_decree_gap_for_debug_logging == 0)
             level = LOG_LEVEL_DEBUG;
-        mu->set_timestamp(generate_timestamp());
+        mu->set_timestamp(_uniq_timestamp_us.next());
     } else {
         mu->set_id(get_ballot(), mu->data.header.decree);
     }
@@ -327,7 +327,7 @@ void replica::on_prepare(dsn_message_t request)
     }
 
     // real prepare start
-
+    _uniq_timestamp_us.try_update(mu->data.header.timestamp);
     auto mu2 = _prepare_list->get_mutation_by_decree(decree);
     if (mu2 != nullptr && mu2->data.header.ballot == mu->data.header.ballot) {
         if (mu2->is_logged()) {

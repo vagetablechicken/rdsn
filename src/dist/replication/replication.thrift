@@ -201,7 +201,7 @@ struct configuration_update_request
     2:dsn.layer2.partition_configuration  config;
     3:config_type              type = config_type.CT_INVALID;
     4:dsn.rpc_address          node;
-    5:dsn.rpc_address          host_node; // only used by stateless apps
+    5:dsn.rpc_address          host_node; // only used by stateless apps    
 }
 
 // meta server (config mgr) => primary | secondary (downgrade) (w/ new config)
@@ -560,6 +560,31 @@ struct configuration_query_restore_response
     1:dsn.error_code        err;
     2:list<dsn.error_code>  restore_status;
     3:list<i32>             restore_progress;
+}
+
+enum app_env_operation
+{
+    APP_ENV_OP_INVALID,
+    APP_ENV_OP_SET,
+    APP_ENV_OP_DEL,
+    APP_ENV_OP_CLEAR
+}
+
+struct configuration_update_app_env_request
+{
+    1:string app_name;
+    2:app_env_operation op = app_env_operation.APP_ENV_OP_INVALID;
+    3:optional list<string> keys;           // used for set and del
+    4:optional list<string> values;         // only used for set
+    5:optional string clear_prefix;         // only used for clear
+                                            // if clear_prefix is empty then we clear all envs
+                                            // else clear the env that key = "clear_prefix.xxx"
+}
+
+struct configuration_update_app_env_response
+{
+    1:dsn.error_code err;
+    2:string hint_message;
 }
 
 /////////////////// duplication-related structs ////////////////////

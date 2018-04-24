@@ -35,15 +35,17 @@
 
 #pragma once
 
-#include <dsn/cpp/address.h>
-#include <dsn/dist/partition_resolver.h>
-#include <algorithm> // for std::find()
+#include <algorithm>
 #include <dsn/utility/configuration.h>
 #include <dsn/utility/errors.h>
+#include <dsn/utility/synchronize.h>
+#include <dsn/tool-api/rpc_address.h>
+#include <dsn/tool-api/partition_resolver.h>
+#include <dsn/cpp/zlocks.h>
 
 namespace dsn {
 /** A RPC URI address. */
-class rpc_uri_address
+class rpc_uri_address : public dsn::ref_counter
 {
 public:
     /**
@@ -94,7 +96,6 @@ private:
 private:
     ::dsn::dist::partition_resolver_ptr _resolver;
     std::string _uri;
-    rpc_address _uri_address;
 };
 
 class uri_resolver
@@ -162,4 +163,6 @@ private:
 
 // ------------------ inline implementation --------------------
 inline uri_resolver_manager::uri_resolver_manager() { setup_resolvers(); }
+
+
 }
