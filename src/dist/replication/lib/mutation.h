@@ -40,10 +40,6 @@
 #include <atomic>
 #include <dsn/utility/link.h>
 
-#ifndef __linux__
-#pragma warning(disable : 4201)
-#endif
-
 namespace dsn {
 namespace replication {
 
@@ -127,6 +123,9 @@ public:
 
     static void write_mutation_header(binary_writer &writer, const mutation_header &header);
     static void read_mutation_header(binary_reader &reader, mutation_header &header);
+
+    // To human-readable string.
+    std::string to_string() const;
 
     // data
     mutation_data data;
@@ -236,7 +235,3 @@ inline void mutation::set_id(ballot b, decree c)
 inline void mutation::set_timestamp(uint64_t timestamp) { data.header.timestamp = timestamp; }
 }
 } // namespace
-
-#ifndef __linux__
-#pragma warning(default : 4201)
-#endif
