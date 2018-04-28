@@ -46,6 +46,7 @@
 #include <dsn/dist/replication/replication.types.h>
 #include <dsn/dist/replication/replication_other_types.h>
 #include <dsn/dist/replication/replication.codes.h>
+#include <dsn/dist/replication/replica_base.h>
 #include <atomic>
 
 namespace dsn {
@@ -92,7 +93,7 @@ public:
     error_code store(const char *file);
 };
 
-class replication_app_base
+class replication_app_base : public replica_base
 {
 public:
     enum chkpt_apply_mode
@@ -145,7 +146,7 @@ public:
     // It is not always necessary for the apps to implement this method,
     // but if it is implemented, the checkpoint logic in replication will be much simpler.
     //
-    virtual ::dsn::error_code async_checkpoint(bool is_emergency) = 0;
+    virtual ::dsn::error_code async_checkpoint(bool flush_memtable) = 0;
     //
     // prepare an app-specific learning request (on learner, to be sent to learnee
     // and used by method get_checkpoint), so that the learning process is more efficient
@@ -229,8 +230,6 @@ public:
     //
     // utility functions to be used by app
     //
-    const char *replica_name() const;
-    gpid get_gpid() const;
     const std::string &data_dir() const { return _dir_data; }
     const std::string &learn_dir() const { return _dir_learn; }
     const std::string &backup_dir() const { return _dir_backup; }
@@ -265,8 +264,6 @@ protected:
     replica *_replica;
     std::atomic<int64_t> _last_committed_decree;
     replica_init_info _info;
-
-    std::unique_ptr<duplication_backlog_handler> _duplication_backlog_handler;
 
     explicit replication_app_base(::dsn::replication::replica *replica);
 };

@@ -28,6 +28,7 @@
 
 #include <dsn/cpp/pipeline.h>
 #include <dsn/dist/replication/duplication_backlog_handler.h>
+#include <dsn/dist/replication/replica_base.h>
 
 #include "mutation_duplicator.h"
 
@@ -36,7 +37,7 @@ namespace replication {
 
 using namespace dsn::literals::chrono_literals;
 
-struct load_mutation : pipeline::when<>, pipeline::result<decree, mutation_tuple_set>
+struct load_mutation : replica_base, pipeline::when<>, pipeline::result<decree, mutation_tuple_set>
 {
     void run() override;
 
@@ -51,8 +52,6 @@ struct load_mutation : pipeline::when<>, pipeline::result<decree, mutation_tuple
         return _duplicator->_replica->private_log()->max_commit_on_disk() >= _start_decree;
     }
 
-    gpid get_gpid() { return _replica->get_gpid(); }
-
 private:
     friend class load_mutation_test;
 
@@ -65,7 +64,9 @@ private:
     mutation_duplicator *_duplicator{nullptr};
 };
 
-struct ship_mutation : pipeline::when<decree, mutation_tuple_set>, public pipeline::result<>
+struct ship_mutation : replica_base,
+                       pipeline::when<decree, mutation_tuple_set>,
+                       public pipeline::result<>
 {
     void run(decree &&last_decree, mutation_tuple_set &&in) override
     {
@@ -85,7 +86,8 @@ struct ship_mutation : pipeline::when<decree, mutation_tuple_set>, public pipeli
 
     /// ==== Implementation ==== ///
 
-    explicit ship_mutation(mutation_duplicator *duplicator) : _duplicator(duplicator)
+    explicit ship_mutation(mutation_duplicator *duplicator)
+        : replica_base(*duplicator), _duplicator(duplicator)
     {
         _backlog_handler = new_backlog_handler(get_gpid(),
                                                _duplicator->remote_cluster_address(),
@@ -98,8 +100,6 @@ struct ship_mutation : pipeline::when<decree, mutation_tuple_set>, public pipeli
     {
         schedule([ this, mut = std::move(mut) ]() mutable { ship(mut); }, delay_ms);
     }
-
-    gpid get_gpid() { return _duplicator->get_gpid(); }
 
 private:
     friend class ship_mutation_test;

@@ -32,6 +32,7 @@
 
 #include <dsn/cpp/message_utils.h>
 #include <dsn/cpp/pipeline.h>
+#include <dsn/dist/replication/replica_base.h>
 
 #include "dist/replication/lib/mutation_log_utils.h"
 #include "dist/replication/lib/prepare_list.h"
@@ -45,7 +46,9 @@ namespace replication {
 /// It works in THREAD_POOL_REPLICATION_LONG (LPC_DUPLICATION_LOAD_MUTATIONS),
 /// which permits tasks to be executed in a blocking way.
 /// NOTE: The resulted `mutation_tuple_set` may be empty.
-struct load_from_private_log : pipeline::when<>, pipeline::result<decree, mutation_tuple_set>
+struct load_from_private_log : replica_base,
+                               pipeline::when<>,
+                               pipeline::result<decree, mutation_tuple_set>
 {
 public:
     void run() override;
@@ -62,8 +65,6 @@ public:
     void find_log_file_to_start(const std::vector<std::string> &log_files);
 
     void load_from_log_file();
-
-    gpid get_gpid() { return _gpid; }
 
     error_s replay_log_block()
     {
@@ -83,10 +84,7 @@ public:
     // Switches to the log file with index = current_log_index + 1.
     void switch_to_next_log_file();
 
-    explicit load_from_private_log(replica *r)
-        : _private_log(r->private_log()), _gpid(r->get_gpid())
-    {
-    }
+    explicit load_from_private_log(replica *r) : replica_base(*r), _private_log(r->private_log()) {}
 
 private:
     friend class load_from_private_log_test;

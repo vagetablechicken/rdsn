@@ -39,10 +39,10 @@ namespace replication {
 
 // duplication_impl manages the set of duplications on this replica.
 // This class is not thread-safe.
-class replica::duplication_impl
+class replica::duplication_impl : public replica_base
 {
 public:
-    explicit duplication_impl(replica *r) : _replica(r) {}
+    explicit duplication_impl(replica *r) : replica_base(*r), _replica(r) {}
 
     // Start a new duplication if there's no dup with `dupid`, or it will change
     // the dup to `next_status`.
@@ -67,8 +67,6 @@ public:
 
         _duplications.clear();
     }
-
-    gpid get_gpid() { return _replica->get_gpid(); }
 
 private:
     friend class replica_stub_duplication_test_base;

@@ -28,6 +28,7 @@
 
 #include <dsn/dist/replication/duplication_common.h>
 #include <dsn/cpp/pipeline.h>
+#include <dsn/dist/replication/replica_base.h>
 
 #include "dist/replication/lib/replica.h"
 
@@ -73,7 +74,7 @@ struct load_from_private_log;
 // TODO(wutao1): optimize
 // Currently we create duplicator for every duplication.
 // They're isolated even if they share the same private log.
-struct mutation_duplicator : pipeline::base
+struct mutation_duplicator : replica_base, pipeline::base
 {
 public:
     mutation_duplicator(const duplication_entry &ent, replica *r);
@@ -112,8 +113,6 @@ public:
             _view->status = new_state.status;
         }
     }
-
-    gpid get_gpid() { return _replica->get_gpid(); }
 
     // Use replica as task tracker, mutation_duplicator is bound to be destroyed
     // before its replica.

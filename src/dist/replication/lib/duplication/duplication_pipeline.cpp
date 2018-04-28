@@ -79,7 +79,8 @@ void load_mutation::run()
 load_mutation::~load_mutation() = default;
 
 load_mutation::load_mutation(mutation_duplicator *duplicator, replica *r)
-    : _log_on_disk(new load_from_private_log(r)),
+    : replica_base(*r),
+      _log_on_disk(new load_from_private_log(r)),
       _log_in_cache(r->_prepare_list),
       _replica(r),
       _duplicator(duplicator)

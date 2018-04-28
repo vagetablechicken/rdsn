@@ -24,23 +24,29 @@
  * THE SOFTWARE.
  */
 
-#include <dsn/c/api_layer1.h>
-#include <dsn/utility/synchronize.h>
+#pragma once
+
+#include <dsn/tool-api/gpid.h>
+#include <dsn/utility/string_view.h>
 
 namespace dsn {
 namespace replication {
 
-/// Generates a unique timestamp.
-/// \see dsn::replication::replica::init_prepare
-inline uint64_t generate_timestamp()
+/// Base class for types that are one-instance-per-replica.
+struct replica_base
 {
-    static uint64_t last = 0;
-    static ::dsn::utils::ex_lock_nr_spin _lock;
-    uint64_t time = dsn_now_ns() / 1000;
-    ::dsn::utils::auto_lock<::dsn::utils::ex_lock_nr_spin> l(_lock);
-    last = std::max(time, last + 1);
-    return last;
-}
+    replica_base(gpid id, string_view name) : _gpid(id), _name(name) {}
+
+    replica_base(const replica_base &rhs) : replica_base(rhs.get_gpid(), rhs.replica_name()) {}
+
+    gpid get_gpid() const { return _gpid; }
+
+    const char *replica_name() const { return _name.c_str(); }
+
+private:
+    const gpid _gpid;
+    const std::string _name;
+};
 
 } // namespace replication
 } // namespace dsn

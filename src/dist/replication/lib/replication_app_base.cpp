@@ -319,6 +319,7 @@ replication_app_base *replication_app_base::new_storage_instance(const std::stri
 }
 
 replication_app_base::replication_app_base(replica *replica)
+    : replica_base(replica->get_gpid(), replica->name())
 {
     _dir_data = utils::filesystem::path_combine(replica->dir(), "data");
     _dir_learn = utils::filesystem::path_combine(replica->dir(), "learn");
@@ -329,8 +330,6 @@ replication_app_base::replication_app_base(replica *replica)
     install_perf_counters();
 }
 
-const char *replication_app_base::replica_name() const { return _replica->name(); }
-gpid replication_app_base::get_gpid() const { return _replica->get_gpid(); }
 void replication_app_base::install_perf_counters()
 {
     // TODO: add custom perfcounters for replication_app_base

@@ -34,8 +34,8 @@ namespace dsn {
 namespace replication {
 
 mutation_duplicator::mutation_duplicator(const duplication_entry &ent, replica *r)
-
-    : _id(ent.dupid),
+    : replica_base(*r),
+      _id(ent.dupid),
       _remote_cluster_address(ent.remote_address),
       _replica(r),
       _view(make_unique<duplication_view>())
