@@ -33,6 +33,9 @@
  *     xxxx-xx-xx, author, fix bug about xxx
  */
 
+#include <dsn/security/client_negotiation.h>
+#include <dsn/security/server_negotiation.h>
+
 #include "asio_rpc_session.h"
 
 namespace dsn {
@@ -105,7 +108,7 @@ void asio_rpc_session::do_read(int read_next)
                            _remote_addr.to_string(),
                            ec.message().c_str());
                 }
-                on_failure();
+                on_failure(false);
             } else {
                 _reader.mark_read(length);
 
@@ -126,7 +129,7 @@ void asio_rpc_session::do_read(int read_next)
 
                 if (read_next == -1) {
                     derror("asio read from %s failed", _remote_addr.to_string());
-                    on_failure();
+                    on_failure(false);
                 } else {
                     start_read_next(read_next);
                 }
@@ -200,10 +203,18 @@ void asio_rpc_session::connect()
         _socket->async_connect(ep, [this](boost::system::error_code ec) {
             if (!ec) {
                 dinfo("client session %s connected", _remote_addr.to_string());
+                _local_addr.assign_ipv4(_socket->local_endpoint().address().to_v4().to_ulong(),
+                                        _socket->local_endpoint().port());
 
                 set_options();
-                set_connected();
-                on_send_completed();
+                if (net().need_auth_connection()) {
+                    set_negotiation();
+                    negotiation();
+                } else {
+                    set_connected();
+                    on_send_completed();
+                }
+                // please make sure we should start negotiation first before recv messages
                 start_read_next();
             } else {
                 derror("client session connect to %s failed, error = %s",

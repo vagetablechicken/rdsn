@@ -27,6 +27,17 @@
 #include <dsn/service_api_c.h>
 #include <dsn/tool_api.h>
 #include <dsn/cpp/serialization.h>
+//TODO HW 
+#include <dsn/tool-api/task_spec.h>
+#include <dsn/tool-api/zlock_provider.h>
+#include <dsn/tool-api/env_provider.h>
+#include <dsn/utility/factory_store.h>
+#include <dsn/tool-api/task.h>
+#include <dsn/utility/singleton_store.h>
+#include <dsn/utility/utils.h>
+#include <dsn/security/sasl_utils.h>
+
+#include <dsn/utility/config_api.h>
 #include <dsn/utility/filesystem.h>
 #include <dsn/utility/process_utils.h>
 #include <dsn/tool-api/command_manager.h>
@@ -410,6 +421,24 @@ bool run(const char *config_file,
 
     dsn_all.engine_ready = true;
 
+    // FIX: open_auth will read again in rpc_engine's construct function
+    if (dsn_config_get_value_bool("security", "open_auth", false, "whether open auth")) {
+        // before start node, we must initialize the kerberos and sasl, because the rpc engine will
+        // be started when starting node
+        ::dsn::error_s err_s = ::dsn::security::init_kerberos(sleep_after_init);
+        if (!err_s.is_ok()) {
+            derror("initialize kerberos failed, with err = %s", err_s.description().c_str());
+            return false;
+        }
+        ddebug("initialize kerberos succeed");
+
+        err_s = ::dsn::security::sasl_init(sleep_after_init);
+        if (!err_s.is_ok()) {
+            derror("initialize sasl failed, with err = %s", err_s.description().c_str());
+            return false;
+        }
+        ddebug("initialize sasl succeed");
+    }
     // split app_name and app_index
     std::list<std::string> applistkvs;
     ::dsn::utils::split_args(app_list.c_str(), applistkvs, ';');

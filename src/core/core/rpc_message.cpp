@@ -52,6 +52,7 @@ uint32_t message_ex::s_local_hash = 0;
 
 message_ex::message_ex()
     : header(nullptr),
+      user_name("unknown"),
       local_rpc_code(::dsn::TASK_CODE_INVALID),
       hdr_format(NET_HDR_INVALID),
       send_retry_count(0),
@@ -188,6 +189,7 @@ message_ex *message_ex::copy(bool clone_content, bool copy_for_receive)
     //   write mock for modules which use rpc.
 
     message_ex *msg = new message_ex();
+    msg->user_name = user_name;
     msg->to_address = to_address;
     msg->local_rpc_code = local_rpc_code;
     msg->hdr_format = hdr_format;
@@ -322,6 +324,7 @@ message_ex *message_ex::create_response()
     // if there are more than one ports listened and the to_address is not equal to
     // the primary address.
     msg->header->from_address = to_address;
+    msg->user_name = user_name;
     msg->to_address = header->from_address;
     msg->io_session = io_session;
     msg->hdr_format = hdr_format;

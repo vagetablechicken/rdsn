@@ -150,7 +150,12 @@ void asio_network_provider::do_accept()
                                          false);
                 on_server_session_accepted(s);
 
+                if (need_auth_connection()) {
+                    // start negotiation when server accept the connection
+                    s->negotiation();
+                }
                 // we should start read immediately after the rpc session is completely created.
+                // please make sure we should start negotiation first before recv messages
                 s->start_read_next();
             }
         }

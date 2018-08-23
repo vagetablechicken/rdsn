@@ -181,6 +181,9 @@ public:
     // to be defined
     virtual rpc_session_ptr create_client_session(::dsn::rpc_address server_addr) = 0;
 
+    bool need_auth_connection();
+    bool mandatory_auth();
+
 protected:
     typedef std::unordered_map<::dsn::rpc_address, rpc_session_ptr> client_sessions;
     client_sessions _clients; // to_address => rpc_session
@@ -194,6 +197,12 @@ protected:
 /*!
   session managements (both client and server types)
 */
+
+namespace security {
+class client_negotiation;
+class server_negotiation;
+}
+
 class rpc_client_matcher;
 class rpc_session : public ref_counter
 {
@@ -216,7 +225,10 @@ public:
     virtual void close() = 0;
 
     bool is_client() const { return _is_client; }
+    bool need_auth() const { return _net.need_auth_connection(); }
+    bool mandantory_auth() const { return _net.mandatory_auth(); }
     dsn::rpc_address remote_address() const { return _remote_addr; }
+    dsn::rpc_address local_address() const { return _local_addr; }
     connection_oriented_network &net() const { return _net; }
     message_parser_ptr parser() const { return _parser; }
 
@@ -227,6 +239,11 @@ public:
     bool cancel(message_ex *request);
     bool delay_recv(int delay_ms);
     bool on_recv_message(message_ex *msg, int delay_ms);
+
+    // for negotiation
+    void handle_negotiation_message(message_ex *msg);
+    void negotiation();
+    void complete_negotiation(bool succ);
 
 public:
     ///
@@ -257,11 +274,16 @@ protected:
     enum session_state
     {
         SS_CONNECTING,
+        SS_NEGOTIATION,
         SS_CONNECTED,
         SS_DISCONNECTED
     };
     ::dsn::utils::ex_lock_nr _lock; // [
     volatile session_state _connect_state;
+
+    // when a session isn't connected, all messages are queued in _pending_connected.
+    // after connected, all of them are moved to "_messages"
+    std::vector<message_ex *> _pending_connected;
 
     // messages are sent in batch, firstly all messages are linked together
     // in a doubly-linked list "_messages".
@@ -287,6 +309,7 @@ protected:
     bool set_connecting();
     // return true when it is permitted
     bool set_disconnected();
+    void set_negotiation();
     void set_connected();
 
     bool is_disconnected() const { return _connect_state == SS_DISCONNECTED; }
@@ -295,11 +318,14 @@ protected:
 
     void clear_send_queue(bool resend_msgs);
     bool on_disconnected(bool is_write);
+    bool prepare_auth_for_normal_message(message_ex *msg);
+    void on_failure(bool is_write);
 
 protected:
     // constant info
     connection_oriented_network &_net;
     dsn::rpc_address _remote_addr;
+    dsn::rpc_address _local_addr;
     int _max_buffer_block_count_per_send;
     message_reader _reader;
     message_parser_ptr _parser;
@@ -309,6 +335,10 @@ private:
     rpc_client_matcher *_matcher;
 
     std::atomic_int _delay_server_receive_ms;
+
+    // for negotiation
+    std::shared_ptr<security::client_negotiation> _client_negotiation;
+    std::shared_ptr<security::server_negotiation> _server_negotiation;
 };
 
 // --------- inline implementation --------------

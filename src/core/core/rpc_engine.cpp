@@ -30,8 +30,6 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
-#include "rpc_engine.h"
-#include "service_engine.h"
 #include <dsn/utility/factory_store.h>
 #include <dsn/perf_counter/perf_counter.h>
 #include <dsn/tool-api/group_address.h>
@@ -39,7 +37,10 @@
 #include <dsn/tool-api/async_calls.h>
 #include <dsn/cpp/serialization.h>
 #include <dsn/utility/rand.h>
-#include <set>
+#include <dsn/security/rpc_codes.h>
+
+#include "rpc_engine.h"
+#include "service_engine.h"
 
 namespace dsn {
 
@@ -410,6 +411,10 @@ rpc_engine::rpc_engine(service_node *node) : _node(node), _rpc_matcher(this)
     dassert(_node != nullptr, "");
     _is_running = false;
     _is_serving = false;
+
+    _need_auth = dsn_config_get_value_bool("security", "open_auth", false, "whether open auth");
+    _mandatory_auth = dsn_config_get_value_bool(
+        "security", "mandatory_auth", true, "wheter to do authertication mandatorily");
 }
 
 //

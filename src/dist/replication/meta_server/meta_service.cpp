@@ -345,7 +345,7 @@ int meta_service::check_leader(dsn::message_ex *req, dsn::rpc_address *forward_a
 }
 
 #define RPC_CHECK_STATUS(dsn_msg, response_struct)                                                 \
-    dinfo("rpc %s called", __FUNCTION__);                                                          \
+    dinfo("rpc %s called, with user name(%s)", __FUNCTION__, dsn_msg->user_name.c_str());          \
     int result = check_leader(dsn_msg, nullptr);                                                   \
     if (result == 0)                                                                               \
         return;                                                                                    \

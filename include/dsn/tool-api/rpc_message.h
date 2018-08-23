@@ -137,6 +137,7 @@ public:
     std::vector<blob> buffers;
 
     // by rpc and network
+    std::string user_name;
     rpc_session_ptr io_session; // send/recv session
     rpc_address to_address;     // always ipv4/v6 address, it is the to_node's net address
     rpc_address server_address; // used by requests, and may be of uri/group address
