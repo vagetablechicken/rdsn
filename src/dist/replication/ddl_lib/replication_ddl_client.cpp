@@ -1644,5 +1644,56 @@ replication_ddl_client::ddd_diagnose(gpid pid, std::vector<ddd_partition_info> &
 
     return dsn::ERR_OK;
 }
+
+dsn::error_code replication_ddl_client::control_acl(const std::string &app_name,
+                                                    const std::string &raw_entries)
+{
+    std::vector<::dsn::app_info> apps;
+    std::string old_acl, new_acl;
+    auto r = list_apps(dsn::app_status::AS_AVAILABLE, apps);
+    if (r != dsn::ERR_OK) {
+        return r;
+    }
+
+    std::map<std::string, std::string>::iterator iter;
+    // handle app_name==all unfinish
+    for (auto &app : apps) {
+        if (app.app_name == app_name) {
+            iter = app.envs.find("acl");
+            if (iter != app.envs.end())
+                old_acl = iter->second;
+        }
+    }
+    std::map<std::string, std::string> acl_map;
+    std::string user_name, permission;
+
+    if (!old_acl.empty()) {
+        // decode old_acl
+        std::istringstream iss(old_acl);
+        while (getline(iss, user_name, ':')) {
+            getline(iss, permission, ';');
+            acl_map[user_name] = permission;
+        }
+    }
+
+    std::istringstream iss(raw_entries);
+    while (getline(iss, user_name, ':')) {
+        getline(iss, permission, ';');
+        acl_map[user_name] = permission;
+    }
+
+    // encode new_acl
+    for (auto &pair : acl_map) {
+        // handle delete
+        if (std::all_of(pair.second.begin(), pair.second.end(), [](char c) { return c == '0'; })) {
+            continue;
+        }
+        new_acl.append(pair.first).append(":").append(pair.second).append(";");
+        // TODO HW stringstream ss; more effective?
+    }
+
+    return set_app_envs(
+        app_name, std::vector<std::string>{"acl"}, std::vector<std::string>{new_acl});
+}
 }
 } // namespace

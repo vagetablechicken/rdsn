@@ -24,14 +24,6 @@
  * THE SOFTWARE.
  */
 
-/*
- * Description:
- *     the meta server's options
- *
- * Revision history:
- *     2016-04-25, Weijie Sun(sunweijie at xiaomi.com), first version
- *     xxxx-xx-xx, author, fix bug about xxx
- */
 #pragma once
 
 #include <string>
@@ -82,6 +74,9 @@ public:
     lb_suboptions _lb_opts;
 
     bool cold_backup_disabled;
+
+    std::string super_user;
+    bool mandatory_auth;
 
 public:
     void initialize();

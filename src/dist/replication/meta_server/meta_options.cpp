@@ -24,14 +24,6 @@
  * THE SOFTWARE.
  */
 
-/*
- * Description:
- *     the meta server's options, impl file
- *
- * Revision history:
- *     2016-04-25, Weijie Sun(sunweijie at xiaomi.com), first version
- *     xxxx-xx-xx, author, fix bug about xxx
- */
 #include "meta_options.h"
 
 namespace dsn {
@@ -163,6 +155,9 @@ void meta_options::initialize()
 
     cold_backup_disabled = dsn_config_get_value_bool(
         "meta_server", "cold_backup_disabled", true, "whether to disable cold backup");
+
+    super_user = dsn_config_get_value_string("security", "super_user", "", "");
+    mandatory_auth = dsn_config_get_value_bool("security", "mandatory_auth", false, "");
 }
 }
 }

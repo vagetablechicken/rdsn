@@ -180,6 +180,8 @@ public:
 
     dsn::error_code ddd_diagnose(gpid pid, std::vector<ddd_partition_info> &ddd_partitions);
 
+    dsn::error_code control_acl(const std::string &app_name, const std::string &raw_entries);
+
 private:
     bool static valid_app_char(int c);
 

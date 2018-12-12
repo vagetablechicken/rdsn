@@ -24,14 +24,6 @@
  * THE SOFTWARE.
  */
 
-/*
- * Description:
- *     What is this file about?
- *
- * Revision history:
- *     xxxx-xx-xx, author, first version
- *     xxxx-xx-xx, author, fix bug about xxx
- */
 #include <sys/stat.h>
 
 #include <boost/lexical_cast.hpp>
@@ -56,6 +48,8 @@ meta_service::meta_service()
     _opts.initialize();
     _meta_opts.initialize();
     _state.reset(new server_state());
+    ddebug("access_controller load super user  %s", _meta_opts.super_user.c_str());
+    _state->load_security_config(_meta_opts.super_user, _meta_opts.mandatory_auth);
     _function_level.store(_meta_opts.meta_function_level_on_start);
     if (_meta_opts.recover_from_replica_server) {
         ddebug("enter recovery mode for [meta_server].recover_from_replica_server = true");
@@ -256,7 +250,6 @@ error_code meta_service::start()
             [](backup_service *bs) { return std::make_shared<policy_context>(bs); });
     }
 
-    // initialize the server_state
     _state->initialize(this, meta_options::concat_path_unix_style(_cluster_root, "apps"));
     while ((err = _state->initialize_data_structure()) != ERR_OK) {
         if (err == ERR_OBJECT_NOT_FOUND && _meta_opts.recover_from_replica_server) {
@@ -345,7 +338,6 @@ int meta_service::check_leader(dsn::message_ex *req, dsn::rpc_address *forward_a
 }
 
 #define RPC_CHECK_STATUS(dsn_msg, response_struct)                                                 \
-    dinfo("rpc %s called, with user name(%s)", __FUNCTION__, dsn_msg->user_name.c_str());          \
     int result = check_leader(dsn_msg, nullptr);                                                   \
     if (result == 0)                                                                               \
         return;                                                                                    \
@@ -356,6 +348,18 @@ int meta_service::check_leader(dsn::message_ex *req, dsn::rpc_address *forward_a
             response_struct.err = ERR_UNDER_RECOVERY;                                              \
         else                                                                                       \
             response_struct.err = ERR_SERVICE_NOT_ACTIVE;                                          \
+        ddebug("reject request with %s", response_struct.err.to_string());                         \
+        reply(dsn_msg, response_struct);                                                           \
+        return;                                                                                    \
+    }                                                                                              \
+    dinfo("rpc_code %s called, with user name(%s), app_id (%d) may be useless",                    \
+          dsn_msg->local_rpc_code.to_string(),                                                     \
+          dsn_msg->user_name.c_str(),                                                              \
+          dsn_msg->header->gpid.get_app_id());                                                     \
+    if (!_state->acl_check(std::string(dsn_msg->local_rpc_code.to_string()),                       \
+                           dsn_msg->user_name,                                                     \
+                           dsn_msg->header->gpid.get_app_id())) {                                  \
+        response_struct.err = ERR_ACL_DENY;                                                        \
         ddebug("reject request with %s", response_struct.err.to_string());                         \
         reply(dsn_msg, response_struct);                                                           \
         return;                                                                                    \
@@ -406,6 +410,8 @@ void meta_service::on_list_apps(dsn::message_ex *req)
     configuration_list_apps_request request;
     ::dsn::unmarshall(req, request);
     _state->list_apps(request, response);
+
+    _state->remove_sensitive_info(req->user_name, response);
     reply(req, response);
 }
 

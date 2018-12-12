@@ -24,15 +24,6 @@
  * THE SOFTWARE.
  */
 
-/*
- * Description:
- *     the meta server's server_state, definition file
- *
- * Revision history:
- *     xxxx-xx-xx, author, first version
- *     2016-04-25, Weijie Sun(sunweijie at xiaomi.com), refactor
- */
-
 #pragma once
 
 #include <unordered_map>
@@ -42,6 +33,7 @@
 #include <dsn/dist/block_service.h>
 #include <dsn/tool-api/task_tracker.h>
 #include <dsn/perf_counter/perf_counter_wrapper.h>
+#include <dsn/security/access_controller.h>
 
 #include "dist/replication/common/replication_common.h"
 #include "dist/replication/meta_server/meta_data.h"
@@ -190,6 +182,38 @@ public:
     task_tracker *tracker() { return &_tracker; }
     void wait_all_task() { _tracker.wait_outstanding_tasks(); }
 
+    bool acl_check(std::string rpc_code, std::string user_name, int app_id)
+    {
+        if (_access_controller.pre_check(rpc_code, user_name))
+            return true;
+
+        zauto_read_lock l(_lock);
+        std::shared_ptr<app_state> app = get_app(app_id);
+        if (app == nullptr) {
+            return false;
+        }
+        app_info ainfo = *(reinterpret_cast<app_info *>(app.get()));
+        auto acl = ainfo.envs.find("acl");
+        if (acl == ainfo.envs.end())
+            return false;
+        return _access_controller.app_level_check(rpc_code, user_name, acl->second);
+    }
+
+    void remove_sensitive_info(const std::string &user_name,
+                               configuration_list_apps_response &response)
+    {
+        if (_access_controller.is_superuser(user_name))
+            return;
+        for (auto &app_info : response.infos) {
+            app_info.envs.erase("acl");
+        }
+    }
+
+    void load_security_config(const std::string &su, const bool ma)
+    {
+        _access_controller.load_config(su, ma);
+    }
+
 private:
     //-1 means waiting forever
     bool spin_wait_staging(int timeout_seconds = -1);
@@ -335,6 +359,8 @@ private:
     perf_counter_wrapper _recent_update_config_count;
     perf_counter_wrapper _recent_partition_change_unwritable_count;
     perf_counter_wrapper _recent_partition_change_writable_count;
+
+    dsn::security::access_controller _access_controller;
 };
 }
 }

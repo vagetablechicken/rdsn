@@ -38,6 +38,7 @@
 #include <dsn/dist/failure_detector_multimaster.h>
 #include <dsn/dist/nfs_node.h>
 #include <dsn/dist/cli/cli.server.h>
+#include <dsn/security/access_controller.h>
 
 #include "dist/replication/common/replication_common.h"
 #include "dist/replication/common/fs_manager.h"
@@ -313,6 +314,8 @@ private:
     perf_counter_wrapper _counter_cold_backup_max_upload_file_size;
 
     dsn::task_tracker _tracker;
+
+    dsn::security::access_controller _access_controller;
 
 private:
     void response_client_error(gpid id, bool is_read, dsn::message_ex *request, error_code error);

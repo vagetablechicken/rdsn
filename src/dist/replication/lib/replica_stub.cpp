@@ -595,6 +595,21 @@ void replica_stub::initialize(const replication_options &opts, bool clear /* = f
     } else {
         initialize_start();
     }
+
+    // TODO HW use replication_options to load config
+    std::string super_user =
+        dsn_config_get_value_string("security", "super_user", "", "super user");
+    if (super_user.empty()) {
+        ddebug("no super user, what should I do?"); // TODO HW
+        return;
+    }
+    ddebug("security: load super user %s", super_user.c_str());
+    bool mandatory_auth = dsn_config_get_value_bool("security", "mandatory_auth", false, "");
+    if (super_user.empty()) {
+        ddebug("no mandatory_auth, what should I do?");
+        return;
+    }
+    _access_controller.load_config(super_user, mandatory_auth);
 }
 
 void replica_stub::initialize_start()
@@ -693,6 +708,13 @@ void replica_stub::on_client_write(gpid id, dsn::message_ex *request)
     }
     replica_ptr rep = get_replica(id);
     if (rep != nullptr) {
+        // TODO HW
+        if (!_access_controller.bit_check(
+                id.get_app_id(), request->user_name, security::acl_bit::W)) {
+            response_client_error(id, false, request, ERR_ACL_DENY);
+            return;
+        }
+
         rep->on_client_write(request->rpc_code(), request);
     } else {
         response_client_error(id, false, request, ERR_OBJECT_NOT_FOUND);
@@ -707,6 +729,12 @@ void replica_stub::on_client_read(gpid id, dsn::message_ex *request)
     }
     replica_ptr rep = get_replica(id);
     if (rep != nullptr) {
+        if (!_access_controller.bit_check(
+                id.get_app_id(), request->user_name, security::acl_bit::R)) {
+            response_client_error(id, true, request, ERR_ACL_DENY);
+            return;
+        }
+
         rep->on_client_read(request->rpc_code(), request);
     } else {
         response_client_error(id, true, request, ERR_OBJECT_NOT_FOUND);
@@ -1163,6 +1191,14 @@ void replica_stub::on_node_query_reply(error_code err,
                                      0);
                 }
             }
+        }
+
+        // replica app_info const -> cache app_acl TODO HW
+        if (!resp.partitions.empty()) {
+            auto info = resp.partitions.begin()->info;
+            ddebug("config_sync received app_acl size %s", info.envs["acl"].c_str());
+            ddebug("cache app_acl to access controller");
+            _access_controller.update_cache(info.app_id, info.envs["acl"]);
         }
     }
 }
