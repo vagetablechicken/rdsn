@@ -69,6 +69,10 @@ function extract_package()
     if [[ $is_zip != "" ]]; then
         unzip -oq $package_name
     fi
+    is_tar_bz2=$(echo $package_name | grep ".tar.bz2")
+    if [[ $is_tar_bz2 != "" ]]; then
+        tar -jxvf $package_name
+    fi
     local ret_code=$?
     if [ $ret_code -ne 0 ]; then
         rm -f $package_name

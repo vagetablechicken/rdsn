@@ -26,6 +26,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -36,6 +37,8 @@
 namespace dsn {
 namespace security {
 
+typedef std::unordered_map<int, std::unordered_map<std::string, std::string>> acls_map;
+
 enum class acl_bit
 {
     // A,
@@ -45,29 +48,66 @@ enum class acl_bit
     // X
 }; // string RW
 
+class rcu_map
+{
+public:
+    rcu_map() : _m0(std::make_shared<acls_map>()), _m1(std::make_shared<acls_map>()) {}
+
+    std::shared_ptr<acls_map> dereference()
+    {
+        if (_read0.load())
+            return _m0;
+        return _m1;
+    }
+    void update(std::shared_ptr<acls_map> temp)
+    {
+        std::shared_ptr<acls_map> free_map = get_free_map();
+
+        // new_map 1.clear exist(grace period end) 2.paste new
+        *free_map = *temp; // hard-copy
+        swith_read();
+    }
+
+private:
+    std::shared_ptr<acls_map> get_free_map()
+    {
+        if (_read0.load()) {
+            return _m1;
+        }
+        return _m0;
+    }
+    void swith_read()
+    {
+        bool b = _read0.load();
+        _read0.store(!b);
+    }
+    std::atomic_bool _read0{true};
+    std::shared_ptr<acls_map> _m0, _m1;
+};
+
 class access_controller
 {
 public:
+    static const std::string ACL_KEY;
+    static void decode_and_insert(int app_id,
+                                  const std::string &acl_entries_str,
+                                  std::shared_ptr<acls_map> acls);
+
     access_controller();
-    bool pre_check(std::string rpc_code, std::string user_name);
-
-    // bool need_app_check() { return _need_app_check; }
-    // bool app_level_check(std::string rpc_code,
-    //                      std::string user_name,
-    //                      const std::map<std::string, std::string> &app_acl);
-    bool app_level_check(std::string rpc_code,
-                         std::string user_name,
-                         const std::string &acl_entries_str);
-
-    // bool cache_check(std::string rpc_code, std::string user_name, int app_id);
 
     void
     load_config(const std::string &super_user, const bool open_auth, const bool mandatory_auth);
 
-    // void update_cache(int app_id, std::map<std::string, std::string> upsert_entries);
-    void update_cache(int app_id, const std::string &upsert_entries_str);
+    // for meta
+    bool pre_check(std::string rpc_code, std::string user_name);
+    bool app_level_check(std::string rpc_code,
+                         std::string user_name,
+                         const std::string &acl_entries_str);
 
+    // for replica
     bool bit_check(const int app_id, const std::string &user_name, const acl_bit bit);
+    void update_cache(std::shared_ptr<acls_map> temp) { _cached_app_acls.update(temp); }
+
     bool is_superuser(const std::string &user_name) { return _super_user == user_name; }
 
 private:
@@ -96,8 +136,11 @@ private:
     std::unordered_map<std::string, std::bitset<10>> _acl_masks;
     std::unordered_set<std::string> _all_pass;
 
-    std::unordered_map<int, std::unordered_map<std::string, std::string>> _cached_app_acls;
-    // boost::shared_mutex _mutex; // for _cached_app_acls
+    // acls_map *_cached_app_acls;
+
+    // acls_map *_temp;
+
+    rcu_map _cached_app_acls;
 };
 }
 }

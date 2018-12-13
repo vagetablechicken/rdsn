@@ -48,7 +48,6 @@ meta_service::meta_service()
     _opts.initialize();
     _meta_opts.initialize();
     _state.reset(new server_state());
-    ddebug("access_controller load super user  %s", _meta_opts.super_user.c_str());
     _state->load_security_config(
         _meta_opts.super_user, _meta_opts.open_auth, _meta_opts.mandatory_auth);
     _function_level.store(_meta_opts.meta_function_level_on_start);
@@ -739,6 +738,15 @@ void meta_service::update_app_env(app_env_rpc env_rpc)
     auto &response = env_rpc.response();
     RPC_CHECK_STATUS(env_rpc.dsn_request(), response);
 
+    // TODO HW
+    // if (_state->is_unpermitted_req(env_rpc.dsn_request()->user_name, env_rpc.request())) {
+    //     dwarn("recv an unpermitted update app_env request, just ignore");
+    //     response.err = ERR_ACL_DENY;
+    //     response.hint_message =
+    //         "recv an unpermitted update_app_env request which keys contain \"acl\"";
+    //     return;
+    // }
+
     app_env_operation::type op = env_rpc.request().op;
     switch (op) {
     case app_env_operation::type::APP_ENV_OP_SET:
@@ -751,7 +759,7 @@ void meta_service::update_app_env(app_env_rpc env_rpc)
                          nullptr,
                          std::bind(&server_state::del_app_envs, _state.get(), env_rpc));
         break;
-    case app_env_operation::type::APP_ENV_OP_CLEAR:
+    case app_env_operation::type::APP_ENV_OP_CLEAR: // TODO HW only super_user?
         tasking::enqueue(LPC_META_STATE_NORMAL,
                          nullptr,
                          std::bind(&server_state::clear_app_envs, _state.get(), env_rpc));

@@ -23,12 +23,35 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+
 #include <dsn/security/access_controller.h>
 #include <dsn/c/api_utilities.h>
-#include "dist/replication/meta_server/meta_data.h"
+
+#include <sstream>
 
 namespace dsn {
 namespace security {
+
+const std::string access_controller::ACL_KEY = "acl";
+
+void access_controller::decode_and_insert(int app_id,
+                                          const std::string &acl_entries_str,
+                                          std::shared_ptr<acls_map> acls)
+{
+    if (acl_entries_str.empty()) {
+        return;
+    }
+
+    std::unordered_map<std::string, std::string> app_acl;
+    std::istringstream iss(acl_entries_str);
+    std::string user_name, permission;
+    while (getline(iss, user_name, ':')) {
+        getline(iss, permission, ';');
+        app_acl[user_name] = permission;
+    }
+
+    acls->insert(std::make_pair(app_id, app_acl));
+}
 
 access_controller::access_controller()
 {
@@ -82,21 +105,25 @@ access_controller::access_controller()
     // RPC_CM_UPDATE_APP_ENV, )
     // RPC_CM_DDD_DIAGNOSE, )
     //// RPC_CM_ACL_CONTROL, )
+
+    // _cached_app_acls = new acls_map();
+    // _temp = new acls_map();
 }
 
 void access_controller::load_config(const std::string &super_user,
                                     const bool open_auth,
                                     const bool mandatory_auth)
 {
+    _super_user = super_user;
+    _open_auth = open_auth;
+    _mandatory_auth = mandatory_auth;
     ddebug("load superuser(%s), open_auth(%d), mandatory_auth(%d)",
            super_user.c_str(),
            open_auth,
            mandatory_auth);
-    _super_user = super_user;
-    _open_auth = open_auth;
-    _mandatory_auth = mandatory_auth;
 }
 
+// for meta
 bool access_controller::pre_check(std::string rpc_code, std::string user_name)
 {
     if (!_open_auth || !_mandatory_auth || user_name == _super_user)
@@ -111,34 +138,9 @@ bool access_controller::pre_check(std::string rpc_code, std::string user_name)
 bool access_controller::cluster_level_check(std::string rpc_code, std::string user_name)
 {
     // can't do cluster level check when using app_envs' acl
+    ddebug("not implemented");
     return false;
 }
-
-// bool access_controller::app_level_check(std::string rpc_code,
-//                                         std::string user_name,
-//                                         const std::map<std::string, std::string> &app_acl)
-// {
-//    // boost::shared_lock<boost::shared_mutex> sl(_mutex);
-//     if (_acl_masks.find(rpc_code) == _acl_masks.end()) {
-//         ddebug("rpc_code %s is not registered", rpc_code.c_str());
-//         return false;
-//     }
-
-//     if (app_acl.find(user_name) == app_acl.end()) {
-//         ddebug("user_name %s doesn't exist in app_acl", user_name.c_str());
-//         return false;
-//     }
-
-//     auto mask = _acl_masks[rpc_code];
-//     auto permission =
-//         std::bitset<10>(app_acl.find(user_name)->second); // TODO HW only accept binary strings
-//         now
-
-//     if ((permission & mask) == mask)
-//         return true;
-
-//     return false;
-// }
 
 bool access_controller::app_level_check(std::string rpc_code,
                                         std::string user_name,
@@ -167,80 +169,29 @@ bool access_controller::app_level_check(std::string rpc_code,
     return false;
 }
 
-// bool access_controller::cache_check(std::string rpc_code, std::string user_name, int app_id)
-// {
-//     ddebug("cache acl check rpc %s, user_name %s", rpc_code.c_str(), user_name.c_str());
-
-//     if (pre_check(rpc_code, user_name))
-//         return true;
-//    // boost::shared_lock<boost::shared_mutex> sl(_mutex);
-//     if (_cached_app_acls.find(app_id) == _cached_app_acls.end()) {
-//         dwarn("app_acl(id %d) does not exist ", app_id);
-//         return false;
-//     }
-
-//     if (app_level_check(rpc_code, user_name, _cached_app_acls[app_id]))
-//         return true;
-//     ddebug("acl deny");
-
-//     return false;
-// }
-
-// void access_controller::update_cache(int app_id, std::map<std::string, std::string>
-// upsert_entries)
-// {
-//     auto &app_acl = _cached_app_acls[app_id];
-//     for (auto &item : upsert_entries) {
-//         if (std::all_of(item.second.begin(), item.second.end(), [](char c) { return c == '0'; }))
-//         {
-//             app_acl.erase(item.first);
-//         } else {
-//             app_acl[item.first] = item.second;
-//         }
-//     }
-// }
-
-void access_controller::update_cache(int app_id, const std::string &acl_entries_str)
-{
-    std::unordered_map<std::string, std::string> app_acl;
-    std::istringstream iss(acl_entries_str);
-    std::string user_name, permission;
-    while (getline(iss, user_name, ':')) {
-        getline(iss, permission, ';');
-        if (std::all_of(permission.begin(), permission.end(), [](char c) { return c == '0'; })) {
-            // del
-            app_acl.erase(app_acl.find(user_name));
-        } else {
-            // set
-            app_acl[user_name] = permission;
-        }
-    }
-    // boost::unique_lock<boost::shared_mutex> ul(_mutex);
-    _cached_app_acls[app_id] = app_acl;
-    ddebug("current cache:");
-    for (auto &pair : _cached_app_acls[app_id]) {
-        ddebug("%s %s", pair.first.c_str(), pair.second.c_str());
-    }
-}
-
+// for replica
 bool access_controller::bit_check(const int app_id, const std::string &user_name, const acl_bit bit)
 {
     if (!_open_auth || !_mandatory_auth || user_name == _super_user)
         return true;
-    // boost::shared_lock<boost::shared_mutex> sl(_mutex);
-    if (_cached_app_acls.find(app_id) == _cached_app_acls.end()) {
+
+    bool ret = false;
+
+    auto acls = _cached_app_acls.dereference();
+    auto app_acl = acls->find(app_id);
+    if (app_acl == acls->end()) {
         ddebug("app_acl(id %d) does not exist ", app_id);
-        return false;
+    } else {
+        auto entry = app_acl->second.find(user_name);
+        if (entry == app_acl->second.end()) {
+            ddebug("user_name %s doesn't exist in app_acl", user_name.c_str());
+        } else {
+            auto permission = entry->second;
+            ret = std::bitset<10>(permission)[static_cast<int>(bit)];
+        }
     }
 
-    auto app_acl = _cached_app_acls[app_id];
-    auto entry = app_acl.find(user_name);
-    if (entry == app_acl.end()) {
-        ddebug("user_name %s doesn't exist in app_acl", user_name.c_str());
-        return false;
-    }
-    auto permission = entry->second;
-    return std::bitset<10>(permission)[static_cast<int>(bit)];
+    return ret;
 }
 }
 }

@@ -193,25 +193,35 @@ public:
             return false;
         }
         app_info ainfo = *(reinterpret_cast<app_info *>(app.get()));
-        auto acl = ainfo.envs.find("acl");
+        auto acl = ainfo.envs.find(security::access_controller::ACL_KEY);
         if (acl == ainfo.envs.end())
             return false;
         return _access_controller.app_level_check(rpc_code, user_name, acl->second);
     }
-
     void remove_sensitive_info(const std::string &user_name,
                                configuration_list_apps_response &response)
     {
         if (_access_controller.is_superuser(user_name))
             return;
         for (auto &app_info : response.infos) {
-            app_info.envs.erase("acl");
+            app_info.envs.erase(security::access_controller::ACL_KEY);
         }
     }
-
-    void load_security_config(const std::string &su, const bool oa, const bool ma)
+    // bool is_unpermitted_req(const std::string &user_name,
+    //                         const configuration_update_app_env_request &request)
+    // {
+    //     if (_access_controller.is_superuser(user_name))
+    //         return false;
+    //     const std::vector<std::string> &keys = request.keys;
+    //     return std::any_of(keys.begin(), keys.end(), [](const std::string &s) {
+    //         return s == security::access_controller::ACL_KEY;
+    //     });
+    // }
+    void load_security_config(const std::string &super_user,
+                              const bool open_auth,
+                              const bool mandatory_auth)
     {
-        _access_controller.load_config(su, oa, ma);
+        _access_controller.load_config(super_user, open_auth, mandatory_auth);
     }
 
 private:

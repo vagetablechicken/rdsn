@@ -315,7 +315,7 @@ private:
 
     dsn::task_tracker _tracker;
 
-    dsn::security::access_controller _access_controller;
+    security::access_controller _access_controller;
 
 private:
     void response_client_error(gpid id, bool is_read, dsn::message_ex *request, error_code error);

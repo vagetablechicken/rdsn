@@ -37,6 +37,7 @@
 #include <dsn/tool-api/group_address.h>
 #include <dsn/dist/replication/replication_ddl_client.h>
 #include <dsn/dist/replication/replication_other_types.h>
+#include <dsn/security/access_controller.h>
 #include <iostream>
 #include <fstream>
 #include <iomanip>
@@ -1649,24 +1650,23 @@ dsn::error_code replication_ddl_client::control_acl(const std::string &app_name,
                                                     const std::string &raw_entries)
 {
     std::vector<::dsn::app_info> apps;
-    std::string old_acl, new_acl;
     auto r = list_apps(dsn::app_status::AS_AVAILABLE, apps);
     if (r != dsn::ERR_OK) {
         return r;
     }
 
     std::map<std::string, std::string>::iterator iter;
+    std::string old_acl;
     // handle app_name==all unfinish
     for (auto &app : apps) {
         if (app.app_name == app_name) {
-            iter = app.envs.find("acl");
+            iter = app.envs.find(security::access_controller::ACL_KEY);
             if (iter != app.envs.end())
                 old_acl = iter->second;
         }
     }
     std::map<std::string, std::string> acl_map;
     std::string user_name, permission;
-
     if (!old_acl.empty()) {
         // decode old_acl
         std::istringstream iss(old_acl);
@@ -1683,17 +1683,22 @@ dsn::error_code replication_ddl_client::control_acl(const std::string &app_name,
     }
 
     // encode new_acl
+    std::ostringstream new_acl;
     for (auto &pair : acl_map) {
-        // handle delete
+        // handle delete op
         if (std::all_of(pair.second.begin(), pair.second.end(), [](char c) { return c == '0'; })) {
             continue;
         }
-        new_acl.append(pair.first).append(":").append(pair.second).append(";");
-        // TODO HW stringstream ss; more effective?
+        new_acl << pair.first << ":" << pair.second << ";";
     }
 
-    return set_app_envs(
-        app_name, std::vector<std::string>{"acl"}, std::vector<std::string>{new_acl});
+    if (new_acl.str().empty()) {
+        return del_app_envs(app_name,
+                            std::vector<std::string>{security::access_controller::ACL_KEY});
+    }
+    return set_app_envs(app_name,
+                        std::vector<std::string>{security::access_controller::ACL_KEY},
+                        std::vector<std::string>{new_acl.str()});
 }
 }
 } // namespace

@@ -2749,12 +2749,19 @@ void server_state::clear_app_envs(const app_env_rpc &env_rpc)
             oss << std::endl << "    " << kv.first;
         }
         ainfo.envs.clear();
+        // for (auto iter = ainfo.envs.begin(); iter != ainfo.envs.end();) {
+        //     if (iter->first != security::access_controller::ACL_KEY) {
+        //         oss << std::endl << "    " << iter->first;
+        //         iter = ainfo.envs.erase(iter);
+        //     } else
+        //         iter++;
+        // }
     } else {
         // acquire key
         for (const auto &pair : ainfo.envs) {
             const std::string &key = pair.first;
             // normal : key = prefix.xxx
-            if (key.size() > prefix.size() + 1) {
+            if (key != security::access_controller::ACL_KEY && key.size() > prefix.size() + 1) {
                 if (key.substr(0, prefix.size()) == prefix && key.at(prefix.size()) == '.') {
                     erase_keys.emplace(key);
                 }
@@ -2787,6 +2794,12 @@ void server_state::clear_app_envs(const app_env_rpc &env_rpc)
             std::string old_envs = dsn::utils::kv_map_to_string(app->envs, ',', '=');
             if (prefix.empty()) {
                 app->envs.clear();
+                // for (auto iter = app->envs.begin(); iter != app->envs.end();) {
+                //     if (iter->first != security::access_controller::ACL_KEY) {
+                //         iter = app->envs.erase(iter);
+                //     } else
+                //         iter++;
+                // }
             } else {
                 for (const auto &key : erase_keys) {
                     app->envs.erase(key);

@@ -11,11 +11,9 @@ set(MY_SRC_SEARCH_MODE "GLOB")
 
 set(MY_PROJ_INC_PATH "")
 
-set(MY_PROJ_LIBS sasl2 gssapi_krb5 krb5)
+set(MY_PROJ_LIBS "")
 
 set(MY_PROJ_LIB_PATH "")
-
-set(MY_BOOST_PACKAGES system filesystem)
 
 # Extra files that will be installed
 set(MY_BINPLACES "")

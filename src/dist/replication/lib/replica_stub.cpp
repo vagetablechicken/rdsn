@@ -596,7 +596,8 @@ void replica_stub::initialize(const replication_options &opts, bool clear /* = f
         initialize_start();
     }
 
-    _access_controller.load_config(opts.super_user, opts.open_auth, opts.mandatory_auth);
+    _access_controller.load_config(
+        _options.super_user, _options.open_auth, _options.mandatory_auth);
 }
 
 void replica_stub::initialize_start()
@@ -695,7 +696,6 @@ void replica_stub::on_client_write(gpid id, dsn::message_ex *request)
     }
     replica_ptr rep = get_replica(id);
     if (rep != nullptr) {
-        // TODO HW
         if (!_access_controller.bit_check(
                 id.get_app_id(), request->user_name, security::acl_bit::W)) {
             response_client_error(id, false, request, ERR_ACL_DENY);
@@ -1180,13 +1180,14 @@ void replica_stub::on_node_query_reply(error_code err,
             }
         }
 
-        // replica app_info const -> cache app_acl TODO HW
-        if (!resp.partitions.empty()) {
-            auto info = resp.partitions.begin()->info;
-            ddebug("config_sync received app_acl size %s", info.envs["acl"].c_str());
-            ddebug("cache app_acl to access controller");
-            _access_controller.update_cache(info.app_id, info.envs["acl"]);
+        std::shared_ptr<security::acls_map> temp = std::make_shared<security::acls_map>();
+        for (auto it = resp.partitions.begin(); it != resp.partitions.end(); ++it) {
+            auto acl = it->info.envs.find(security::access_controller::ACL_KEY);
+            if (acl == it->info.envs.end())
+                continue;
+            security::access_controller::decode_and_insert(it->info.app_id, acl->second, temp);
         }
+        _access_controller.update_cache(temp);
     }
 }
 
@@ -1247,7 +1248,6 @@ void replica_stub::on_node_query_reply_scatter2(replica_stub_ptr this_, gpid id)
         }
 
         ddebug("%s: replica not exists on meta server, remove", replica->name());
-
         // TODO: set PS_INACTIVE instead for further state reuse
         replica->update_local_configuration_with_no_ballot_change(partition_status::PS_ERROR);
     }
