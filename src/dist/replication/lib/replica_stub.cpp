@@ -596,20 +596,7 @@ void replica_stub::initialize(const replication_options &opts, bool clear /* = f
         initialize_start();
     }
 
-    // TODO HW use replication_options to load config
-    std::string super_user =
-        dsn_config_get_value_string("security", "super_user", "", "super user");
-    if (super_user.empty()) {
-        ddebug("no super user, what should I do?"); // TODO HW
-        return;
-    }
-    ddebug("security: load super user %s", super_user.c_str());
-    bool mandatory_auth = dsn_config_get_value_bool("security", "mandatory_auth", false, "");
-    if (super_user.empty()) {
-        ddebug("no mandatory_auth, what should I do?");
-        return;
-    }
-    _access_controller.load_config(super_user, mandatory_auth);
+    _access_controller.load_config(opts.super_user, opts.open_auth, opts.mandatory_auth);
 }
 
 void replica_stub::initialize_start()

@@ -76,6 +76,7 @@ public:
     bool cold_backup_disabled;
 
     std::string super_user;
+    bool open_auth;
     bool mandatory_auth;
 
 public:

@@ -209,9 +209,9 @@ public:
         }
     }
 
-    void load_security_config(const std::string &su, const bool ma)
+    void load_security_config(const std::string &su, const bool oa, const bool ma)
     {
-        _access_controller.load_config(su, ma);
+        _access_controller.load_config(su, oa, ma);
     }
 
 private:

@@ -157,6 +157,7 @@ void meta_options::initialize()
         "meta_server", "cold_backup_disabled", true, "whether to disable cold backup");
 
     super_user = dsn_config_get_value_string("security", "super_user", "", "");
+    open_auth = dsn_config_get_value_bool("security", "open_auth", false, "");
     mandatory_auth = dsn_config_get_value_bool("security", "mandatory_auth", false, "");
 }
 }

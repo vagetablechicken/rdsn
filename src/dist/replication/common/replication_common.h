@@ -118,6 +118,10 @@ public:
     std::string cold_backup_root;
     int32_t max_concurrent_uploading_file_count;
 
+    std::string super_user;
+    bool open_auth;
+    bool mandatory_auth;
+
 public:
     replication_options();
     void initialize();

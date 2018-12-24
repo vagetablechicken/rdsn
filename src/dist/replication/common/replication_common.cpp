@@ -485,6 +485,10 @@ void replication_options::initialize()
                                              max_concurrent_uploading_file_count,
                                              "concurrent uploading file count");
 
+    super_user = dsn_config_get_value_string("security", "super_user", "", "super user");
+    open_auth = dsn_config_get_value_bool("security", "open_auth", false, "");
+    mandatory_auth = dsn_config_get_value_bool("security", "mandatory_auth", false, "");
+
     replica_helper::load_meta_servers(meta_servers);
 
     sanity_check();

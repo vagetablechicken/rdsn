@@ -32,40 +32,10 @@
 #include <bitset>
 #include <memory>
 #include <initializer_list>
-//#include <atomic>
-//#include <boost/thread/thread.hpp>
-//#include <boost/thread/shared_mutex.hpp>
+
 namespace dsn {
 namespace security {
-class acl
-{
-public:
-    enum acl_bit
-    {
-        A,
-        C,
-        W,
-        R,
-        X
-    };
 
-    void set_entry(std::string user_name, int permission) { _table[user_name] = permission; }
-    bool is_access(std::string user_name, acl_bit b)
-    {
-        decltype(_table.begin()) entry;
-        if ((entry = _table.find(user_name)) != _table.end()) {
-            int permission = entry->second;
-            return std::bitset<10>(permission)[b];
-        }
-        return false;
-    }
-    void del_entry(std::string user_name) { _table.erase(user_name); }
-
-public:
-    // bit XRWCA
-    std::map<std::string, int> _table;
-    // unfinished
-};
 enum class acl_bit
 {
     // A,
@@ -78,8 +48,6 @@ enum class acl_bit
 class access_controller
 {
 public:
-    static std::map<std::string, std::string> create_maps();
-
     access_controller();
     bool pre_check(std::string rpc_code, std::string user_name);
 
@@ -93,11 +61,8 @@ public:
 
     // bool cache_check(std::string rpc_code, std::string user_name, int app_id);
 
-    void load_config(const std::string &super_user, const bool mandatory_auth)
-    {
-        this->_super_user = super_user;
-        this->_mandatory_auth = mandatory_auth;
-    }
+    void
+    load_config(const std::string &super_user, const bool open_auth, const bool mandatory_auth);
 
     // void update_cache(int app_id, std::map<std::string, std::string> upsert_entries);
     void update_cache(int app_id, const std::string &upsert_entries_str);
@@ -125,15 +90,14 @@ private:
     bool cluster_level_check(std::string rpc_code, std::string user_name);
 
     std::string _super_user;
+    bool _open_auth;
     bool _mandatory_auth;
-    // bool _need_app_check;
 
     std::unordered_map<std::string, std::bitset<10>> _acl_masks;
     std::unordered_set<std::string> _all_pass;
 
     std::unordered_map<int, std::unordered_map<std::string, std::string>> _cached_app_acls;
     // boost::shared_mutex _mutex; // for _cached_app_acls
-    // TODO HW c++1y shared_timed_mutex replace boost::shared_mutex?
 };
 }
 }

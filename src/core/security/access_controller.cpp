@@ -84,9 +84,22 @@ access_controller::access_controller()
     //// RPC_CM_ACL_CONTROL, )
 }
 
+void access_controller::load_config(const std::string &super_user,
+                                    const bool open_auth,
+                                    const bool mandatory_auth)
+{
+    ddebug("load superuser(%s), open_auth(%d), mandatory_auth(%d)",
+           super_user.c_str(),
+           open_auth,
+           mandatory_auth);
+    _super_user = super_user;
+    _open_auth = open_auth;
+    _mandatory_auth = mandatory_auth;
+}
+
 bool access_controller::pre_check(std::string rpc_code, std::string user_name)
 {
-    if (!_mandatory_auth || user_name == _super_user)
+    if (!_open_auth || !_mandatory_auth || user_name == _super_user)
         return true;
 
     if (_all_pass.find(rpc_code) != _all_pass.end())
@@ -202,7 +215,7 @@ void access_controller::update_cache(int app_id, const std::string &acl_entries_
             app_acl[user_name] = permission;
         }
     }
-   // boost::unique_lock<boost::shared_mutex> ul(_mutex);
+    // boost::unique_lock<boost::shared_mutex> ul(_mutex);
     _cached_app_acls[app_id] = app_acl;
     ddebug("current cache:");
     for (auto &pair : _cached_app_acls[app_id]) {
@@ -212,9 +225,9 @@ void access_controller::update_cache(int app_id, const std::string &acl_entries_
 
 bool access_controller::bit_check(const int app_id, const std::string &user_name, const acl_bit bit)
 {
-    if (!_mandatory_auth || user_name == _super_user)
+    if (!_open_auth || !_mandatory_auth || user_name == _super_user)
         return true;
-   // boost::shared_lock<boost::shared_mutex> sl(_mutex);
+    // boost::shared_lock<boost::shared_mutex> sl(_mutex);
     if (_cached_app_acls.find(app_id) == _cached_app_acls.end()) {
         ddebug("app_acl(id %d) does not exist ", app_id);
         return false;

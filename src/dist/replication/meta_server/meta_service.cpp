@@ -49,7 +49,8 @@ meta_service::meta_service()
     _meta_opts.initialize();
     _state.reset(new server_state());
     ddebug("access_controller load super user  %s", _meta_opts.super_user.c_str());
-    _state->load_security_config(_meta_opts.super_user, _meta_opts.mandatory_auth);
+    _state->load_security_config(
+        _meta_opts.super_user, _meta_opts.open_auth, _meta_opts.mandatory_auth);
     _function_level.store(_meta_opts.meta_function_level_on_start);
     if (_meta_opts.recover_from_replica_server) {
         ddebug("enter recovery mode for [meta_server].recover_from_replica_server = true");
