@@ -25,7 +25,6 @@
  */
 
 #include <dsn/security/access_controller.h>
-#include <dsn/c/api_utilities.h>
 
 #include <sstream>
 
@@ -177,9 +176,8 @@ bool access_controller::bit_check(const int app_id, const std::string &user_name
 
     bool ret = false;
 
-    auto acls = _cached_app_acls.dereference();
-    auto app_acl = acls->find(app_id);
-    if (app_acl == acls->end()) {
+    auto app_acl = _cached_app_acls.find(app_id);
+    if (app_acl == _cached_app_acls.end()) {
         ddebug("app_acl(id %d) does not exist ", app_id);
     } else {
         auto entry = app_acl->second.find(user_name);

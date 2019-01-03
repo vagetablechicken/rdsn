@@ -34,6 +34,8 @@
 #include <memory>
 #include <initializer_list>
 
+#include <dsn/c/api_utilities.h>
+
 namespace dsn {
 namespace security {
 
@@ -59,16 +61,70 @@ public:
             return _m0;
         return _m1;
     }
-    void update(std::shared_ptr<acls_map> temp)
+
+    acls_map::iterator find(int app_id)
+    {
+        if (_read0.load())
+            return _m0->find(app_id);
+        return _m1->find(app_id);
+    }
+    acls_map::iterator end()
+    {
+        if (_read0.load())
+            return _m0->end();
+        return _m1->end();
+    }
+    void update(std::shared_ptr<acls_map> &&temp)
     {
         std::shared_ptr<acls_map> free_map = get_free_map();
 
         // new_map 1.clear exist(grace period end) 2.paste new
-        *free_map = *temp; // hard-copy
+        //*free_map = *temp; // hard-copy
+        // std::string output;
+        // ddebug("old:");
+        // for (auto p : *free_map) {
+        //     output = p.first + " has ";
+        //     for (auto pp : p.second) {
+        //         output += pp.first + ":" + pp.second + ";";
+        //     }
+        //     ddebug("%s ", output.c_str());
+        // }
+        dassert(temp.unique(), "temp is moved");
+        free_map->swap(*temp);
+        // ddebug("new:");
+        // for (auto p : *free_map) {
+        //     output = p.first + " has ";
+        //     for (auto pp : p.second) {
+        //         output += pp.first + ":" + pp.second + ";";
+        //     }
+        //     ddebug("%s ", output.c_str());
+        // }./res
+        // debug_info();
         swith_read();
     }
 
 private:
+    void debug_address() { ddebug("m0 -> address %p, m1 -> address %p", _m0.get(), _m1.get()); }
+    void debug_info()
+    {
+        std::string output;
+        ddebug("m0:");
+        for (auto p : *_m0) {
+            output = p.first + " has ";
+            for (auto pp : p.second) {
+                output += pp.first + ":" + pp.second + ";";
+            }
+            ddebug("%s ", output.c_str());
+        }
+        ddebug("m1:");
+        for (auto p : *_m1) {
+            output = p.first + " has ";
+            for (auto pp : p.second) {
+                output += pp.first + ":" + pp.second + ";";
+            }
+            ddebug("%s ", output.c_str());
+        }
+    }
     std::shared_ptr<acls_map> get_free_map()
     {
         if (_read0.load()) {
@@ -106,7 +162,10 @@ public:
 
     // for replica
     bool bit_check(const int app_id, const std::string &user_name, const acl_bit bit);
-    void update_cache(std::shared_ptr<acls_map> temp) { _cached_app_acls.update(temp); }
+    void update_cache(std::shared_ptr<acls_map> &&temp)
+    {
+        _cached_app_acls.update(std::move(temp));
+    }
 
     bool is_superuser(const std::string &user_name) { return _super_user == user_name; }
 

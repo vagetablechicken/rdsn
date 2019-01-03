@@ -1180,6 +1180,7 @@ void replica_stub::on_node_query_reply(error_code err,
             }
         }
 
+        ddebug("before acl update");
         std::shared_ptr<security::acls_map> temp = std::make_shared<security::acls_map>();
         for (auto it = resp.partitions.begin(); it != resp.partitions.end(); ++it) {
             auto acl = it->info.envs.find(security::access_controller::ACL_KEY);
@@ -1187,7 +1188,8 @@ void replica_stub::on_node_query_reply(error_code err,
                 continue;
             security::access_controller::decode_and_insert(it->info.app_id, acl->second, temp);
         }
-        _access_controller.update_cache(temp);
+        _access_controller.update_cache(std::move(temp));
+        ddebug("acl update done");
     }
 }
 

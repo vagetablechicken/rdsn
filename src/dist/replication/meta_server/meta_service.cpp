@@ -632,18 +632,24 @@ void meta_service::on_start_recovery(dsn::message_ex *req)
     if (result == -1) {
         response.err = ERR_FORWARD_TO_OTHERS;
     } else {
-        zauto_write_lock l(_meta_lock);
-        if (_started.load()) {
-            ddebug("service(%s) is already started, ignore the recovery request",
-                   dsn_primary_address().to_string());
-            response.err = ERR_SERVICE_ALREADY_RUNNING;
+        // only super user can do start recovery
+        if (!_state->superuser_check(req->user_name)) { //TODO HW 还有是否开关认证的问题，要理一下
+            ddebug("only super user can send recovery request");
+            response.err = ERR_ACL_DENY;
         } else {
-            configuration_recovery_request request;
-            dsn::unmarshall(req, request);
-            _state->on_start_recovery(request, response);
-            if (response.err == dsn::ERR_OK) {
-                _recovering = false;
-                start_service();
+            zauto_write_lock l(_meta_lock);
+            if (_started.load()) {
+                ddebug("service(%s) is already started, ignore the recovery request",
+                       dsn_primary_address().to_string());
+                response.err = ERR_SERVICE_ALREADY_RUNNING;
+            } else {
+                configuration_recovery_request request;
+                dsn::unmarshall(req, request);
+                _state->on_start_recovery(request, response);
+                if (response.err == dsn::ERR_OK) {
+                    _recovering = false;
+                    start_service();
+                }
             }
         }
     }
