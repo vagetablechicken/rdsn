@@ -76,56 +76,19 @@ public:
     }
     void update(std::shared_ptr<acls_map> &&temp)
     {
-        std::shared_ptr<acls_map> free_map = get_free_map();
+        dassert(temp.unique(), "temp is referenced by others");
+        std::shared_ptr<acls_map> reload_map = get_reload_map();
 
-        // new_map 1.clear exist(grace period end) 2.paste new
-        //*free_map = *temp; // hard-copy
-        // std::string output;
-        // ddebug("old:");
-        // for (auto p : *free_map) {
-        //     output = p.first + " has ";
-        //     for (auto pp : p.second) {
-        //         output += pp.first + ":" + pp.second + ";";
-        //     }
-        //     ddebug("%s ", output.c_str());
-        // }
-        dassert(temp.unique(), "temp is moved");
-        free_map->swap(*temp);
-        // ddebug("new:");
-        // for (auto p : *free_map) {
-        //     output = p.first + " has ";
-        //     for (auto pp : p.second) {
-        //         output += pp.first + ":" + pp.second + ";";
-        //     }
-        //     ddebug("%s ", output.c_str());
-        // }./res
-        // debug_info();
+        // reload_map reloads the new acls (it means the grace period is over)
+        // old acls will be released automatically, cause it has been managed by shared_ptr after
+        // the swap
+        reload_map->swap(*temp);
+
         swith_read();
     }
 
 private:
-    void debug_address() { ddebug("m0 -> address %p, m1 -> address %p", _m0.get(), _m1.get()); }
-    void debug_info()
-    {
-        std::string output;
-        ddebug("m0:");
-        for (auto p : *_m0) {
-            output = p.first + " has ";
-            for (auto pp : p.second) {
-                output += pp.first + ":" + pp.second + ";";
-            }
-            ddebug("%s ", output.c_str());
-        }
-        ddebug("m1:");
-        for (auto p : *_m1) {
-            output = p.first + " has ";
-            for (auto pp : p.second) {
-                output += pp.first + ":" + pp.second + ";";
-            }
-            ddebug("%s ", output.c_str());
-        }
-    }
-    std::shared_ptr<acls_map> get_free_map()
+    std::shared_ptr<acls_map> get_reload_map()
     {
         if (_read0.load()) {
             return _m1;
@@ -137,7 +100,7 @@ private:
         bool b = _read0.load();
         _read0.store(!b);
     }
-    std::atomic_bool _read0{true};
+    std::atomic_bool _read0{true}; // true: read m0; false: read m1 
     std::shared_ptr<acls_map> _m0, _m1;
 };
 
@@ -194,10 +157,6 @@ private:
 
     std::unordered_map<std::string, std::bitset<10>> _acl_masks;
     std::unordered_set<std::string> _all_pass;
-
-    // acls_map *_cached_app_acls;
-
-    // acls_map *_temp;
 
     rcu_map _cached_app_acls;
 };

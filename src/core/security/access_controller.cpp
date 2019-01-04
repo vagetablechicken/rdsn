@@ -80,33 +80,30 @@ access_controller::access_controller()
                               "RPC_CM_LIST_NODES",
                               "RPC_CM_CLUSTER_INFO",
                               "RPC_CM_QUERY_PARTITION_CONFIG_BY_INDEX"});
-    // RPC_CM_QUERY_NODE_PARTITIONS, )
-    // RPC_CM_CONFIG_SYNC, )
-    // RPC_CM_UPDATE_PARTITION_CONFIGURATION, )
-    // RPC_CM_CREATE_APP, )
-    // RPC_CM_DROP_APP, )
-    // RPC_CM_RECALL_APP, )
-    // RPC_CM_CONTROL_META, )
-    // RPC_CM_START_RECOVERY, )
-    // RPC_CM_START_RESTORE, )
+    // RPC_CM_QUERY_NODE_PARTITIONS 
+    // RPC_CM_CONFIG_SYNC 
+    // RPC_CM_UPDATE_PARTITION_CONFIGURATION 
+    // RPC_CM_CREATE_APP
+    // RPC_CM_DROP_APP
+    // RPC_CM_RECALL_APP
+    // RPC_CM_CONTROL_META
+    // RPC_CM_START_RECOVERY // CAUTION: only super user can do start recovery
+    // RPC_CM_START_RESTORE
 
-    // RPC_CM_PROPOSE_BALANCER, )
-    // RPC_CM_ADD_BACKUP_POLICY, )
-    // RPC_CM_QUERY_BACKUP_POLICY, )
-    // RPC_CM_MODIFY_BACKUP_POLICY, )
+    // RPC_CM_PROPOSE_BALANCER
+    // RPC_CM_ADD_BACKUP_POLICY
+    // RPC_CM_QUERY_BACKUP_POLICY
+    // RPC_CM_MODIFY_BACKUP_POLICY
 
-    // RPC_CM_REPORT_RESTORE_STATUS, )
-    // RPC_CM_QUERY_RESTORE_STATUS, )
-    // RPC_CM_ADD_DUPLICATION, )
-    // RPC_CM_CHANGE_DUPLICATION_STATUS, )
-    // RPC_CM_QUERY_DUPLICATION, )
-    // RPC_CM_DUPLICATION_SYNC, )
-    // RPC_CM_UPDATE_APP_ENV, )
-    // RPC_CM_DDD_DIAGNOSE, )
-    //// RPC_CM_ACL_CONTROL, )
-
-    // _cached_app_acls = new acls_map();
-    // _temp = new acls_map();
+    // RPC_CM_REPORT_RESTORE_STATUS
+    // RPC_CM_QUERY_RESTORE_STATUS
+    // RPC_CM_ADD_DUPLICATION
+    // RPC_CM_CHANGE_DUPLICATION_STATUS
+    // RPC_CM_QUERY_DUPLICATION
+    // RPC_CM_DUPLICATION_SYNC
+    // RPC_CM_UPDATE_APP_ENV
+    // RPC_CM_DDD_DIAGNOSE
+    //// RPC_CM_ACL_CONTROL
 }
 
 void access_controller::load_config(const std::string &super_user,

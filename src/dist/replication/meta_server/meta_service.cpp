@@ -632,10 +632,11 @@ void meta_service::on_start_recovery(dsn::message_ex *req)
     if (result == -1) {
         response.err = ERR_FORWARD_TO_OTHERS;
     } else {
-        // only super user can do start recovery
-        if (!_state->superuser_check(req->user_name)) { //TODO HW 还有是否开关认证的问题，要理一下
-            ddebug("only super user can send recovery request");
+        if (!_state->acl_check(std::string(req->local_rpc_code.to_string()),
+                               req->user_name,
+                               req->header->gpid.get_app_id())) {
             response.err = ERR_ACL_DENY;
+            ddebug("reject request with %s", response.err.to_string());
         } else {
             zauto_write_lock l(_meta_lock);
             if (_started.load()) {
