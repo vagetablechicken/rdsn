@@ -301,7 +301,7 @@ void rpc_session::send_message(message_ex *msg)
         // Attention:
         // here we only allow two cases to send message:
         //  case 1: session's state is SS_CONNECTED
-        //  case 2: session's is sending negotiation message
+        //  case 2: session is sending negotiation message
         if (SS_CONNECTED == _connect_state || is_negotiation_message(msg->rpc_code())) {
             if (is_negotiation_message(msg->rpc_code()) && is_client()) {
                 dassert(SS_NEGOTIATION == _connect_state,
@@ -452,6 +452,7 @@ void rpc_session::handle_negotiation_message(message_ex *msg)
 
 bool rpc_session::prepare_auth_for_normal_message(message_ex *msg)
 {
+    // TODO: version + auth
     bool reject_as_unauthenticated = false;
 
     if (_net.need_auth_connection() && _net.mandatory_auth()) {
@@ -480,7 +481,7 @@ bool rpc_session::prepare_auth_for_normal_message(message_ex *msg)
               is_client() ? "is" : "isn't");
         dsn::message_ptr msg_ref(msg);
         if (msg->header->context.u.is_request)
-            _net.engine()->reply(msg->create_response(), ERR_AUTH_FAILED);
+            _net.engine()->reply(msg->create_response(), ERR_UNAUTHENTICATED);
         return false;
     }
     return true;
@@ -538,6 +539,15 @@ bool rpc_session::on_recv_message(message_ex *msg, int delay_ms)
 }
 
 void rpc_session::negotiation()
+{
+    // TODO: version_negotiation + auth_negotiation
+    if (_net.need_auth_connection())
+        auth_negotiation();
+    else
+        complete_negotiation(true);
+}
+
+void rpc_session::auth_negotiation()
 {
     if (is_client()) {
         _client_negotiation = std::make_shared<dsn::security::client_negotiation>(this);

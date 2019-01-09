@@ -109,7 +109,7 @@ thrift_description = [
                 "remove": ["\"security_types.h\""]
             }
         }
-    }
+    },
 ]
 
 thrift_exe = os.getcwd() + "/bin/Linux/thrift"

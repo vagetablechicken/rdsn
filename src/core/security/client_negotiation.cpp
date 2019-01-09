@@ -161,7 +161,7 @@ void client_negotiation::initiate_negotiation()
     error_code code = err_s.code();
     std::string desc = err_s.description();
 
-    if (code == ERR_AUTH_FAILED && desc.find("Ticket expired") != std::string::npos) {
+    if (code == ERR_AUTH_NEGO_FAILED && desc.find("Ticket expired") != std::string::npos) {
         derror("%s: start client negotiation with ticket expire, waiting on ticket renew",
                _name.c_str());
         fail_negotiation();

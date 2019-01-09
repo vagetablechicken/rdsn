@@ -207,13 +207,9 @@ void asio_rpc_session::connect()
                                         _socket->local_endpoint().port());
 
                 set_options();
-                if (net().need_auth_connection()) {
-                    set_negotiation();
-                    negotiation();
-                } else {
-                    set_connected();
-                    on_send_completed();
-                }
+                set_negotiation();
+                negotiation(); // now only auth negotiation is supported, version negotiation will be supported in the future
+
                 // please make sure we should start negotiation first before recv messages
                 start_read_next();
             } else {

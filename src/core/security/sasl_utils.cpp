@@ -144,7 +144,7 @@ error_s call_sasl_func(sasl_conn_t *conn, const std::function<int()> &call)
     case SASL_NOUSER:    // User not found.
     case SASL_WRONGMECH: // Server doesn't support requested mechanism.
     case SASL_BADSERV: { // Server failed mutual authentication.
-        ret = error_s::make(ERR_AUTH_FAILED);
+        ret = error_s::make(ERR_AUTH_NEGO_FAILED);
         ret << "sasl auth failed, error: " << sasl_err_desc(err, conn);
         break;
     }

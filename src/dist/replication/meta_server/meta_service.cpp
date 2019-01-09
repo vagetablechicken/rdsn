@@ -522,6 +522,8 @@ void meta_service::on_query_configuration_by_index(dsn::message_ex *msg)
         return;
     }
 
+    // TODO HW ACL CHECK
+
     configuration_query_by_index_request request;
     dsn::unmarshall(msg, request);
     _state->query_configuration_by_index(request, response);
@@ -644,6 +646,8 @@ void meta_service::on_start_recovery(dsn::message_ex *req)
                        dsn_primary_address().to_string());
                 response.err = ERR_SERVICE_ALREADY_RUNNING;
             } else {
+                // TODO HW ACL CHECK
+                
                 configuration_recovery_request request;
                 dsn::unmarshall(req, request);
                 _state->on_start_recovery(request, response);

@@ -243,6 +243,7 @@ public:
     // for negotiation
     void handle_negotiation_message(message_ex *msg);
     void negotiation();
+    void auth_negotiation();
     void complete_negotiation(bool succ);
 
 public:
