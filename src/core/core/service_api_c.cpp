@@ -27,9 +27,7 @@
 #include <dsn/service_api_c.h>
 #include <dsn/tool_api.h>
 #include <dsn/cpp/serialization.h>
-//TODO HW 
 #include <dsn/tool-api/task_spec.h>
-#include <dsn/tool-api/zlock_provider.h>
 #include <dsn/tool-api/env_provider.h>
 #include <dsn/utility/factory_store.h>
 #include <dsn/tool-api/task.h>

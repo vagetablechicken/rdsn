@@ -34,6 +34,7 @@
 #include <dsn/utility/defer.h>
 #include <dsn/utility/utils.h>
 
+#include <mutex>
 #include <functional>
 #include <boost/asio/deadline_timer.hpp>
 
