@@ -182,10 +182,13 @@ public:
     task_tracker *tracker() { return &_tracker; }
     void wait_all_task() { _tracker.wait_outstanding_tasks(); }
 
-    bool acl_check(std::string rpc_code, std::string user_name, int app_id)
+    bool acl_check(std::string rpc_code, std::string user_name, int app_id = -1)
     {
         if (_access_controller.pre_check(rpc_code, user_name))
             return true;
+        // if there's no need for app_level_check or app_id is invalid, we can skip locking (cluster_level_check does not implement)
+        if (!_access_controller.need_further_check() || app_id == -1)
+            return false;
 
         zauto_read_lock l(_lock);
         std::shared_ptr<app_state> app = get_app(app_id);
@@ -207,16 +210,6 @@ public:
             app_info.envs.erase(security::access_controller::ACL_KEY);
         }
     }
-    // bool is_unpermitted_req(const std::string &user_name,
-    //                         const configuration_update_app_env_request &request)
-    // {
-    //     if (_access_controller.is_superuser(user_name))
-    //         return false;
-    //     const std::vector<std::string> &keys = request.keys;
-    //     return std::any_of(keys.begin(), keys.end(), [](const std::string &s) {
-    //         return s == security::access_controller::ACL_KEY;
-    //     });
-    // }
     void load_security_config(const std::string &super_user,
                               const bool open_auth,
                               const bool mandatory_auth)

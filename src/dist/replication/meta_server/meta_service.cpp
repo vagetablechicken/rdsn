@@ -352,11 +352,11 @@ int meta_service::check_leader(dsn::message_ex *req, dsn::rpc_address *forward_a
         reply(dsn_msg, response_struct);                                                           \
         return;                                                                                    \
     }                                                                                              \
-    dinfo("rpc_code %s called, with user name(%s), app_id (%d) may be useless",                    \
-          dsn_msg->local_rpc_code.to_string(),                                                     \
+    dinfo("rpc_code %s called, with user name(%s), app_id(%d) may be useless",                     \
+          dsn_msg->rpc_code().to_string(),                                                         \
           dsn_msg->user_name.c_str(),                                                              \
           dsn_msg->header->gpid.get_app_id());                                                     \
-    if (!_state->acl_check(std::string(dsn_msg->local_rpc_code.to_string()),                       \
+    if (!_state->acl_check(std::string(dsn_msg->rpc_code().to_string()),                           \
                            dsn_msg->user_name,                                                     \
                            dsn_msg->header->gpid.get_app_id())) {                                  \
         response_struct.err = ERR_ACL_DENY;                                                        \
@@ -522,11 +522,15 @@ void meta_service::on_query_configuration_by_index(dsn::message_ex *msg)
         return;
     }
 
-    // TODO HW ACL CHECK
+    if (!_state->acl_check(msg->rpc_code().to_string(), msg->user_name)) {
+        response.err = ERR_ACL_DENY;
+        ddebug("reject request with %s", response.err.to_string());
+    } else {
+        configuration_query_by_index_request request;
+        dsn::unmarshall(msg, request);
+        _state->query_configuration_by_index(request, response);
+    }
 
-    configuration_query_by_index_request request;
-    dsn::unmarshall(msg, request);
-    _state->query_configuration_by_index(request, response);
     reply(msg, response);
 }
 
@@ -624,7 +628,7 @@ void meta_service::on_propose_balancer(dsn::message_ex *req)
 void meta_service::on_start_recovery(dsn::message_ex *req)
 {
     configuration_recovery_response response;
-    ddebug("got start recovery request, start to do recovery");
+    ddebug("got start recovery request");
     int result = check_leader(req, nullptr);
     if (result == 0) // request has been forwarded to others
     {
@@ -634,9 +638,7 @@ void meta_service::on_start_recovery(dsn::message_ex *req)
     if (result == -1) {
         response.err = ERR_FORWARD_TO_OTHERS;
     } else {
-        if (!_state->acl_check(std::string(req->local_rpc_code.to_string()),
-                               req->user_name,
-                               req->header->gpid.get_app_id())) {
+        if (!_state->acl_check(std::string(req->rpc_code().to_string()), req->user_name)) {
             response.err = ERR_ACL_DENY;
             ddebug("reject request with %s", response.err.to_string());
         } else {
@@ -646,8 +648,7 @@ void meta_service::on_start_recovery(dsn::message_ex *req)
                        dsn_primary_address().to_string());
                 response.err = ERR_SERVICE_ALREADY_RUNNING;
             } else {
-                // TODO HW ACL CHECK
-                
+                ddebug("legitimate request， start to do recovery");
                 configuration_recovery_request request;
                 dsn::unmarshall(req, request);
                 _state->on_start_recovery(request, response);
@@ -749,15 +750,6 @@ void meta_service::update_app_env(app_env_rpc env_rpc)
     auto &response = env_rpc.response();
     RPC_CHECK_STATUS(env_rpc.dsn_request(), response);
 
-    // TODO HW
-    // if (_state->is_unpermitted_req(env_rpc.dsn_request()->user_name, env_rpc.request())) {
-    //     dwarn("recv an unpermitted update app_env request, just ignore");
-    //     response.err = ERR_ACL_DENY;
-    //     response.hint_message =
-    //         "recv an unpermitted update_app_env request which keys contain \"acl\"";
-    //     return;
-    // }
-
     app_env_operation::type op = env_rpc.request().op;
     switch (op) {
     case app_env_operation::type::APP_ENV_OP_SET:
@@ -770,7 +762,7 @@ void meta_service::update_app_env(app_env_rpc env_rpc)
                          nullptr,
                          std::bind(&server_state::del_app_envs, _state.get(), env_rpc));
         break;
-    case app_env_operation::type::APP_ENV_OP_CLEAR: // TODO HW only super_user?
+    case app_env_operation::type::APP_ENV_OP_CLEAR:
         tasking::enqueue(LPC_META_STATE_NORMAL,
                          nullptr,
                          std::bind(&server_state::clear_app_envs, _state.get(), env_rpc));

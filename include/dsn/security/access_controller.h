@@ -100,7 +100,7 @@ private:
         bool b = _read0.load();
         _read0.store(!b);
     }
-    std::atomic_bool _read0{true}; // true: read m0; false: read m1 
+    std::atomic_bool _read0{true}; // true: read m0; false: read m1
     std::shared_ptr<acls_map> _m0, _m1;
 };
 
@@ -116,48 +116,58 @@ public:
 
     void
     load_config(const std::string &super_user, const bool open_auth, const bool mandatory_auth);
+    bool is_superuser(const std::string &user_name)
+    {
+        return !_open_auth || !_mandatory_auth || _super_user == user_name;
+    }
 
     // for meta
-    bool pre_check(std::string rpc_code, std::string user_name);
-    bool app_level_check(std::string rpc_code,
-                         std::string user_name,
+    // usage: "pre_check" true ? return true : need_further_check;
+    //        "need_further_check" true ? app_level_check : return false;
+    bool pre_check(const std::string &rpc_code, const std::string &user_name);
+    bool need_further_check() { return _need_further_check; }
+    bool cluster_level_check(const std::string &rpc_code,
+                             const std::string &user_name); // not implemented
+    bool app_level_check(const std::string &rpc_code,
+                         const std::string &user_name,
                          const std::string &acl_entries_str);
 
-    // for replica
+    // for replica, only check RW
     bool bit_check(const int app_id, const std::string &user_name, const acl_bit bit);
     void update_cache(std::shared_ptr<acls_map> &&temp)
     {
         _cached_app_acls.update(std::move(temp));
     }
 
-    bool is_superuser(const std::string &user_name) { return _super_user == user_name; }
-
 private:
-    void register_entries(std::initializer_list<std::string> il, std::string mask)
+    void register_entries(std::initializer_list<std::string> il, const std::string &mask)
     {
         for (auto rpc_code : il) {
             _acl_masks[rpc_code] = std::bitset<10>(mask);
+            _registered_codes.insert(rpc_code);
         }
     }
-    void register_entry(std::string &rpc_code, std::string &mask)
+    void register_entry(const std::string &rpc_code, const std::string &mask)
     {
         _acl_masks[rpc_code] = std::bitset<10>(mask);
+        _registered_codes.insert(rpc_code);
     }
     void register_allpass_entries(std::initializer_list<std::string> il)
     {
-        for (auto rpc_code : il)
+        for (auto rpc_code : il) {
             _all_pass.insert(rpc_code);
+            _registered_codes.insert(rpc_code);
+        }
     }
-
-    bool cluster_level_check(std::string rpc_code, std::string user_name);
 
     std::string _super_user;
     bool _open_auth;
     bool _mandatory_auth;
 
     std::unordered_map<std::string, std::bitset<10>> _acl_masks;
-    std::unordered_set<std::string> _all_pass;
+    std::unordered_set<std::string> _all_pass, _registered_codes;
 
+    bool _need_further_check;
     rcu_map _cached_app_acls;
 };
 }

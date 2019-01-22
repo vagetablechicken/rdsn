@@ -80,14 +80,17 @@ access_controller::access_controller()
                               "RPC_CM_LIST_NODES",
                               "RPC_CM_CLUSTER_INFO",
                               "RPC_CM_QUERY_PARTITION_CONFIG_BY_INDEX"});
-    // RPC_CM_QUERY_NODE_PARTITIONS 
-    // RPC_CM_CONFIG_SYNC 
-    // RPC_CM_UPDATE_PARTITION_CONFIGURATION 
+
+    // 3. only superuser -- unregistered rpc_codes require superuser privileges
+
+    // RPC_CM_QUERY_NODE_PARTITIONS
+    // RPC_CM_CONFIG_SYNC
+    // RPC_CM_UPDATE_PARTITION_CONFIGURATION
     // RPC_CM_CREATE_APP
     // RPC_CM_DROP_APP
     // RPC_CM_RECALL_APP
     // RPC_CM_CONTROL_META
-    // RPC_CM_START_RECOVERY // CAUTION: only super user can do start recovery
+    // RPC_CM_START_RECOVERY // CAUTION: only super user can do start recovery, do not register it
     // RPC_CM_START_RESTORE
 
     // RPC_CM_PROPOSE_BALANCER
@@ -101,9 +104,8 @@ access_controller::access_controller()
     // RPC_CM_CHANGE_DUPLICATION_STATUS
     // RPC_CM_QUERY_DUPLICATION
     // RPC_CM_DUPLICATION_SYNC
-    // RPC_CM_UPDATE_APP_ENV
+    // RPC_CM_UPDATE_APP_ENV // CAUTION: only super user can update app env, if need register, should reject unpermitted requests which want update acl in app_envs
     // RPC_CM_DDD_DIAGNOSE
-    //// RPC_CM_ACL_CONTROL
 }
 
 void access_controller::load_config(const std::string &super_user,
@@ -120,26 +122,32 @@ void access_controller::load_config(const std::string &super_user,
 }
 
 // for meta
-bool access_controller::pre_check(std::string rpc_code, std::string user_name)
+bool access_controller::pre_check(const std::string &rpc_code, const std::string &user_name)
 {
+    _need_further_check = false;
     if (!_open_auth || !_mandatory_auth || user_name == _super_user)
         return true;
 
     if (_all_pass.find(rpc_code) != _all_pass.end())
         return true;
 
+    // if rpc_code is unregistered, it is absolutely impossible to pass xxx_level_check
+    if (_registered_codes.find(rpc_code) != _registered_codes.end())
+        _need_further_check = true;
+
     return false;
 }
 
-bool access_controller::cluster_level_check(std::string rpc_code, std::string user_name)
+bool access_controller::cluster_level_check(const std::string &rpc_code,
+                                            const std::string &user_name)
 {
     // can't do cluster level check when using app_envs' acl
     ddebug("not implemented");
     return false;
 }
 
-bool access_controller::app_level_check(std::string rpc_code,
-                                        std::string user_name,
+bool access_controller::app_level_check(const std::string &rpc_code,
+                                        const std::string &user_name,
                                         const std::string &acl_entries_str)
 {
     auto mask_iter = _acl_masks.find(rpc_code);
@@ -157,7 +165,7 @@ bool access_controller::app_level_check(std::string rpc_code,
     auto end = acl_entries_str.find(";", user_pos);
     auto permission_pos = user_pos + user_name.size() + 1;
     std::string permission_str = acl_entries_str.substr(permission_pos, end - permission_pos);
-    auto permission = std::bitset<10>(permission_str); // TODO HW only accept binary strings now
+    auto permission = std::bitset<10>(permission_str); // CAUTION: only accept binary strings now, no decimal
 
     if ((permission & mask) == mask)
         return true;
@@ -179,7 +187,7 @@ bool access_controller::bit_check(const int app_id, const std::string &user_name
     } else {
         auto entry = app_acl->second.find(user_name);
         if (entry == app_acl->second.end()) {
-            ddebug("user_name %s doesn't exist in app_acl", user_name.c_str());
+            ddebug("user_name %s doesn't exist in app_acl(id %d)", user_name.c_str(), app_id);
         } else {
             auto permission = entry->second;
             ret = std::bitset<10>(permission)[static_cast<int>(bit)];
