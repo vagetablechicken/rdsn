@@ -717,7 +717,7 @@ void replica_stub::on_client_write(gpid id, dsn::message_ex *request)
     if (rep != nullptr) {
         if (!_access_controller.bit_check(
                 id.get_app_id(), request->user_name, security::acl_bit::W)) {
-            response_client_error(id, false, request, ERR_ACL_DENY);
+            response_client(id, false, request, rep->status(), ERR_ACL_DENY);
             return;
         }
 
@@ -745,7 +745,7 @@ void replica_stub::on_client_read(gpid id, dsn::message_ex *request)
     if (rep != nullptr) {
         if (!_access_controller.bit_check(
                 id.get_app_id(), request->user_name, security::acl_bit::R)) {
-            response_client_error(id, true, request, ERR_ACL_DENY);
+            response_client(id, true, request, rep->status(), ERR_ACL_DENY);
             return;
         }
 

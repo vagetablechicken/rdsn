@@ -146,10 +146,11 @@ function(dsn_add_project)
 
     if((MY_PROJ_TYPE STREQUAL "SHARED") OR (MY_PROJ_TYPE STREQUAL "EXECUTABLE"))
         if(DSN_BUILD_RUNTIME AND(DEFINED DSN_IN_CORE) AND DSN_IN_CORE)
-            set(TEMP_LIBS "" sasl2 gssapi_krb5 krb5 fmt)
+            set(TEMP_LIBS "") 
         else()
-            set(TEMP_LIBS dsn_runtime sasl2 gssapi_krb5 krb5 fmt)
+            set(TEMP_LIBS dsn_runtime)
         endif()
+        set(TEMP_LIBS ${TEMP_LIBS} sasl2 gssapi_krb5 krb5 fmt) # from 3rdparty
         set(MY_PROJ_LIBS ${MY_PROJ_LIBS} ${TEMP_LIBS} ${MY_BOOST_LIBS} ${DSN_SYSTEM_LIBS})
     endif()
 
