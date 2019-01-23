@@ -184,22 +184,10 @@ public:
 
     bool acl_check(std::string rpc_code, std::string user_name, int app_id = -1)
     {
+        // access_controller support RW for normal users, and therefore, meta servers do only pre_check
         if (_access_controller.pre_check(rpc_code, user_name))
             return true;
-        // if there's no need for app_level_check or app_id is invalid, we can skip locking (cluster_level_check does not implement)
-        if (!_access_controller.need_further_check() || app_id == -1)
-            return false;
-
-        zauto_read_lock l(_lock);
-        std::shared_ptr<app_state> app = get_app(app_id);
-        if (app == nullptr) {
-            return false;
-        }
-        app_info ainfo = *(reinterpret_cast<app_info *>(app.get()));
-        auto acl = ainfo.envs.find(security::access_controller::ACL_KEY);
-        if (acl == ainfo.envs.end())
-            return false;
-        return _access_controller.app_level_check(rpc_code, user_name, acl->second);
+        return false;
     }
     void remove_sensitive_info(const std::string &user_name,
                                configuration_list_apps_response &response)

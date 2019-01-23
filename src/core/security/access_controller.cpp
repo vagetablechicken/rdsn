@@ -56,7 +56,7 @@ access_controller::access_controller()
 {
     // initial rpc permission template
 
-    // 1.rpc_rrdb
+    // 1.rpc_rrdb for replica
     register_entries({"RPC_RRDB_RRDB_GET",
                       "RPC_RRDB_RRDB_MULTI_GET",
                       "RPC_RRDB_RRDB_SORTKEY_COUNT",
@@ -70,10 +70,10 @@ access_controller::access_controller()
                       "RPC_RRDB_RRDB_MULTI_PUT",
                       "RPC_RRDB_RRDB_REMOVE",
                       "RPC_RRDB_RRDB_MULTI_REMOVE",
-                      "RPC_RRDB_RRDB_INCR"},
-                     "01");
-
-    register_entries({"RPC_RRDB_RRDB_CHECK_AND_SET", "RPC_RRDB_RRDB_CHECK_AND_MUTATE"}, "11");
+                      "RPC_RRDB_RRDB_INCR",
+                      "RPC_RRDB_RRDB_CHECK_AND_SET",
+                      "RPC_RRDB_RRDB_CHECK_AND_MUTATE"},
+                     "11"); // Based on "writable always readable"
 
     // 2. meta
     register_allpass_entries({"RPC_CM_LIST_APPS",
@@ -104,7 +104,9 @@ access_controller::access_controller()
     // RPC_CM_CHANGE_DUPLICATION_STATUS
     // RPC_CM_QUERY_DUPLICATION
     // RPC_CM_DUPLICATION_SYNC
-    // RPC_CM_UPDATE_APP_ENV // CAUTION: only super user can update app env, if need register, should reject unpermitted requests which want update acl in app_envs
+
+    // RPC_CM_UPDATE_APP_ENV // CAUTION: only super user can update app env, if need register,
+    // should reject unpermitted requests which want to update acl in app_envs
     // RPC_CM_DDD_DIAGNOSE
 }
 
@@ -124,16 +126,9 @@ void access_controller::load_config(const std::string &super_user,
 // for meta
 bool access_controller::pre_check(const std::string &rpc_code, const std::string &user_name)
 {
-    _need_further_check = false;
-    if (!_open_auth || !_mandatory_auth || user_name == _super_user)
+    if (!_open_auth || !_mandatory_auth || user_name == _super_user ||
+        _all_pass.find(rpc_code) != _all_pass.end())
         return true;
-
-    if (_all_pass.find(rpc_code) != _all_pass.end())
-        return true;
-
-    // if rpc_code is unregistered, it is absolutely impossible to pass xxx_level_check
-    if (_registered_codes.find(rpc_code) != _registered_codes.end())
-        _need_further_check = true;
 
     return false;
 }
@@ -165,7 +160,8 @@ bool access_controller::app_level_check(const std::string &rpc_code,
     auto end = acl_entries_str.find(";", user_pos);
     auto permission_pos = user_pos + user_name.size() + 1;
     std::string permission_str = acl_entries_str.substr(permission_pos, end - permission_pos);
-    auto permission = std::bitset<10>(permission_str); // CAUTION: only accept binary strings now, no decimal
+    auto permission =
+        std::bitset<10>(permission_str); // CAUTION: only accept binary strings now, no decimal
 
     if ((permission & mask) == mask)
         return true;
@@ -183,7 +179,7 @@ bool access_controller::bit_check(const int app_id, const std::string &user_name
 
     auto app_acl = _cached_app_acls.find(app_id);
     if (app_acl == _cached_app_acls.end()) {
-        ddebug("app_acl(id %d) does not exist ", app_id);
+        ddebug("app_acl(id %d) is empty, acl deny", app_id);
     } else {
         auto entry = app_acl->second.find(user_name);
         if (entry == app_acl->second.end()) {

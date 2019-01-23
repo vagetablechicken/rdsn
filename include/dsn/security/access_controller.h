@@ -38,9 +38,9 @@
 
 namespace dsn {
 namespace security {
-
-typedef std::unordered_map<int, std::unordered_map<std::string, std::string>> acls_map;
-
+// access_controller only support RW for normal users, so
+// meta side: only pre_check
+// replica side: only bit_check
 enum class acl_bit
 {
     // A,
@@ -50,6 +50,7 @@ enum class acl_bit
     // X
 }; // string RW
 
+typedef std::unordered_map<int, std::unordered_map<std::string, std::string>> acls_map;
 class rcu_map
 {
 public:
@@ -122,17 +123,14 @@ public:
     }
 
     // for meta
-    // usage: "pre_check" true ? return true : need_further_check;
-    //        "need_further_check" true ? app_level_check : return false;
     bool pre_check(const std::string &rpc_code, const std::string &user_name);
-    bool need_further_check() { return _need_further_check; }
     bool cluster_level_check(const std::string &rpc_code,
                              const std::string &user_name); // not implemented
     bool app_level_check(const std::string &rpc_code,
                          const std::string &user_name,
                          const std::string &acl_entries_str);
 
-    // for replica, only check RW
+    // for replica, only check RW bit
     bool bit_check(const int app_id, const std::string &user_name, const acl_bit bit);
     void update_cache(std::shared_ptr<acls_map> &&temp)
     {
@@ -144,19 +142,16 @@ private:
     {
         for (auto rpc_code : il) {
             _acl_masks[rpc_code] = std::bitset<10>(mask);
-            _registered_codes.insert(rpc_code);
         }
     }
     void register_entry(const std::string &rpc_code, const std::string &mask)
     {
         _acl_masks[rpc_code] = std::bitset<10>(mask);
-        _registered_codes.insert(rpc_code);
     }
     void register_allpass_entries(std::initializer_list<std::string> il)
     {
         for (auto rpc_code : il) {
             _all_pass.insert(rpc_code);
-            _registered_codes.insert(rpc_code);
         }
     }
 
@@ -165,9 +160,8 @@ private:
     bool _mandatory_auth;
 
     std::unordered_map<std::string, std::bitset<10>> _acl_masks;
-    std::unordered_set<std::string> _all_pass, _registered_codes;
+    std::unordered_set<std::string> _all_pass;
 
-    bool _need_further_check;
     rcu_map _cached_app_acls;
 };
 }
