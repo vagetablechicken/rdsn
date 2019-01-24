@@ -208,7 +208,6 @@ error_s client_negotiation::send_sasl_initiate_msg()
 
     error_code code = err_s.code();
     if (code == ERR_OK || code == ERR_INCOMPLETE) {
-        dinfo("%s: call sasl_client_start succ with msg, len = %d", _name.c_str(), msg_len);
         negotiation_message req;
         req.status = negotiation_status::SASL_INITIATE;
         req.msg = dsn::blob::create_from_bytes(msg, msg_len);
@@ -275,7 +274,6 @@ void client_negotiation::handle_challenge(const message_ptr &challenge_msg)
 {
     negotiation_message challenge;
     dsn::unmarshall(challenge_msg, challenge);
-    dinfo("%s: client recv negotiation message from server", _name.c_str());
 
     if (challenge.status == negotiation_status::type::SASL_AUTH_FAIL) {
         dwarn("%s: auth failed, reason(%s)", _name.c_str(), challenge.msg.to_string().c_str());

@@ -56,13 +56,6 @@ class rcu_map
 public:
     rcu_map() : _m0(std::make_shared<acls_map>()), _m1(std::make_shared<acls_map>()) {}
 
-    std::shared_ptr<acls_map> dereference()
-    {
-        if (_read0.load())
-            return _m0;
-        return _m1;
-    }
-
     acls_map::iterator find(int app_id)
     {
         if (_read0.load())
@@ -101,6 +94,7 @@ private:
         bool b = _read0.load();
         _read0.store(!b);
     }
+
     std::atomic_bool _read0{true}; // true: read m0; false: read m1
     std::shared_ptr<acls_map> _m0, _m1;
 };

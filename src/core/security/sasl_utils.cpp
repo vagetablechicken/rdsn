@@ -63,7 +63,6 @@ int simple(void *context, int id, const char **result, unsigned *len)
     switch (id) {
     case SASL_CB_USER:
     case SASL_CB_AUTHNAME:
-        dinfo("sasl callback for SASL_CB_USER");
         *result = username.c_str();
         if (len != nullptr) {
             *len = username.length();
