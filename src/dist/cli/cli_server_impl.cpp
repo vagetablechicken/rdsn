@@ -6,11 +6,18 @@ namespace dsn {
 class cli_service_impl : public cli_service
 {
 public:
-    void on_call(const command &request, ::dsn::rpc_replier<std::string> &reply) override
+    void on_call(message_ex *req) override
     {
+        if (!_super_user.empty() && req->user_name != _super_user) {
+            reply(req, std::string("acl deny"));
+            return;
+        }
+        command request;
+        dsn::unmarshall(req, request);
+
         std::string output;
         dsn::command_manager::instance().run_command(request.cmd, request.arguments, output);
-        reply(output);
+        reply(req, output);
     }
 };
 

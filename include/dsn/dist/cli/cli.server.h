@@ -26,6 +26,7 @@
 
 #pragma once
 #include <iostream>
+#include <string>
 #include <dsn/cpp/serverlet.h>
 #include <dsn/dist/cli/cli.code.definition.h>
 #include <dsn/dist/cli/cli_types.h>
@@ -43,18 +44,20 @@ public:
 protected:
     // all service handlers to be implemented further
     // RPC_CLI_CLI_CALL
-    virtual void on_call(const command &request, ::dsn::rpc_replier<std::string> &reply)
+    virtual void on_call(message_ex *req)
     {
-        std::cout << "... exec RPC_CLI_CLI_CALL ... (not implemented) " << std::endl;
-        std::string resp;
-        reply(resp);
+        std::string resp("... exec RPC_CLI_CLI_CALL ... (not implemented) ");
+        reply(req, resp);
     }
+    std::string _super_user;
 
 public:
     void open_service()
     {
-        this->register_async_rpc_handler(RPC_CLI_CLI_CALL, "call", &cli_service::on_call);
+        this->register_rpc_handler(RPC_CLI_CLI_CALL, "call", &cli_service::on_call);
     }
     void close_service() { this->unregister_rpc_handler(RPC_CLI_CLI_CALL); }
+    // super_user == "" means no ACL
+    void set_superuser(const std::string &super_suer) { _super_user = super_suer; }
 };
 }

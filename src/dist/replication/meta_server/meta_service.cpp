@@ -225,6 +225,8 @@ error_code meta_service::start()
     // start cli service before acquiring leader lock,
     // so that the command line call can be handled
     _cli_service = std::move(dsn::cli_service::create_service());
+    if (_meta_opts.open_auth && _meta_opts.mandatory_auth)
+        _cli_service->set_superuser(_meta_opts.super_user);
     _cli_service->open_service();
 
     _failure_detector->acquire_leader_lock();
@@ -356,9 +358,7 @@ int meta_service::check_leader(dsn::message_ex *req, dsn::rpc_address *forward_a
           dsn_msg->rpc_code().to_string(),                                                         \
           dsn_msg->user_name.c_str(),                                                              \
           dsn_msg->header->gpid.get_app_id());                                                     \
-    if (!_state->acl_check(std::string(dsn_msg->rpc_code().to_string()),                           \
-                           dsn_msg->user_name,                                                     \
-                           dsn_msg->header->gpid.get_app_id())) {                                  \
+    if (!_state->acl_check(std::string(dsn_msg->rpc_code().to_string()), dsn_msg->user_name)) {    \
         response_struct.err = ERR_ACL_DENY;                                                        \
         ddebug("reject request with %s", response_struct.err.to_string());                         \
         reply(dsn_msg, response_struct);                                                           \

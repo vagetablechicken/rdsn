@@ -182,7 +182,7 @@ public:
     task_tracker *tracker() { return &_tracker; }
     void wait_all_task() { _tracker.wait_outstanding_tasks(); }
 
-    bool acl_check(std::string rpc_code, std::string user_name, int app_id = -1)
+    bool acl_check(std::string rpc_code, std::string user_name)
     {
         // access_controller support RW for normal users, and therefore, meta servers do only pre_check
         if (_access_controller.pre_check(rpc_code, user_name))

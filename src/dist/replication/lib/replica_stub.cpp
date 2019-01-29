@@ -586,6 +586,8 @@ void replica_stub::initialize(const replication_options &opts, bool clear /* = f
     _nfs->start();
 
     _cli_service = std::move(dsn::cli_service::create_service());
+    if (_options.open_auth && _options.mandatory_auth)
+        _cli_service->set_superuser(_options.super_user);
     _cli_service->open_service();
 
     if (_options.delay_for_fd_timeout_on_start) {
