@@ -17,9 +17,9 @@ else()
     set(MY_PROJ_LIBS dsn_cli)
 endif()
 
-set(MY_PROJ_LIB_PATH "")
+set(MY_BOOST_LIBS Boost::system Boost::filesystem)
 
-set(MY_BOOST_PACKAGES system filesystem)
+set(MY_PROJ_LIB_PATH "")
 
 # Extra files that will be installed
 set(MY_BINPLACES "${CMAKE_CURRENT_SOURCE_DIR}/config.ini")

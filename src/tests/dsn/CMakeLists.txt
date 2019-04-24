@@ -35,7 +35,7 @@ set(MY_PROJ_LIBS
     ${MY_PROJ_LIBS}
     )
 
-set(MY_BOOST_PACKAGES system filesystem)
+set(MY_BOOST_LIBS Boost::system Boost::filesystem)
 
 set(MY_PROJ_LIB_PATH "")
 

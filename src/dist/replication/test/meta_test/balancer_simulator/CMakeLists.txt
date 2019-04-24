@@ -18,9 +18,9 @@ set(MY_PROJ_LIBS dsn_meta_server
                  fmt
                  gtest)
 
-set(MY_PROJ_LIB_PATH "")
+set(MY_BOOST_LIBS Boost::system Boost::filesystem Boost::regex)
 
-set(MY_BOOST_PACKAGES system filesystem)
+set(MY_PROJ_LIB_PATH "")
 
 # Extra files that will be installed
 set(MY_BINPLACES "")
