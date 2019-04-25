@@ -140,9 +140,9 @@ fi
 
 # build libevent
 if [ ! -d $TP_OUTPUT/include/event2 ]; then
-    cd $TP_SRC/libevent-release-2.1.8-stable
-    ./autogen.sh
-    ./configure --enable-shared=no --disable-debug-mode --prefix=$TP_OUTPUT --with-pic=yes
+    mkdir -p $TP_BUILD/libevent-release-2.1.8-stable
+    cd $TP_BUILD/libevent-release-2.1.8-stable
+    cmake $TP_SRC/libevent-release-2.1.8-stable -DCMAKE_INSTALL_PREFIX=$TP_OUTPUT -DEVENT__BUILD_SHARED_LIBRARIES=OFF -DEVENT__DISABLE_DEBUG_MODE=ON
     make -j8 && make install
     res=$?
     cd $TP_DIR
@@ -155,7 +155,7 @@ fi
 if [ ! -d $TP_OUTPUT/include/fmt ]; then
     mkdir -p $TP_BUILD/fmt-4.0.0
     cd $TP_BUILD/fmt-4.0.0
-    cmake $TP_SRC/fmt-4.0.0 -DCMAKE_INSTALL_PREFIX=$TP_OUTPUT -DFMT_TEST=false
+    cmake $TP_SRC/fmt-4.0.0 -DCMAKE_INSTALL_PREFIX=$TP_OUTPUT -DFMT_TEST=false -DCMAKE_CXX_FLAGS="-fPIC"
     make -j8 && make install
     cd $TP_DIR
     exit_if_fail "fmtlib" $?
@@ -167,7 +167,7 @@ fi
 if [ ! -d $TP_OUTPUT/include/Poco ]; then
     mkdir -p $TP_BUILD/poco-1.7.8-release
     cd $TP_BUILD/poco-1.7.8-release
-    CMAKE_FLAGS="-DENABLE_XML=OFF\
+    CMAKE_FLAGS="
     -DENABLE_MONGODB=OFF\
     -DENABLE_PDF=OFF\
     -DENABLE_DATA=OFF\

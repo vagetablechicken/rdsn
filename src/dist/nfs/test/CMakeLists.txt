@@ -11,7 +11,7 @@ set(MY_SRC_SEARCH_MODE "GLOB")
 
 set(MY_PROJ_INC_PATH "")
 
-set(MY_PROJ_LIBS dsn_nfs gtest)
+set(MY_PROJ_LIBS dsn_nfs GTest::GTest)
 
 set(MY_BOOST_LIBS Boost::system Boost::filesystem)
 

@@ -14,6 +14,8 @@ get_filename_component(DSN_PROJECT_DIR ${DSN_PROJECT_DIR} DIRECTORY)
 set(DSN_THIRDPARTY_ROOT ${DSN_PROJECT_DIR}/thirdparty/output)
 message(STATUS "DSN_THIRDPARTY_ROOT = ${DSN_THIRDPARTY_ROOT}")
 
+set(CMAKE_PREFIX_PATH ${DSN_THIRDPARTY_ROOT};${CMAKE_PREFIX_PATH})
+
 # Set DSN_ROOT to rdsn/DSN_ROOT, this is where rdsn will be installed
 set(DSN_ROOT ${DSN_PROJECT_DIR}/DSN_ROOT)
 message(STATUS "DSN_ROOT = ${DSN_ROOT}")
@@ -248,14 +250,20 @@ endfunction(dsn_setup_compiler_flags)
 
 # find necessary system libs
 function(dsn_setup_system_libs)
-    find_package(Threads REQUIRED)
+    set(THREADS_PREFER_PTHREAD_FLAG ON)
+    find_package(Threads REQUIRED)#Threads::Threads
+    if(CMAKE_USE_PTHREADS_INIT)
+        message(STATUS "Use pthreads")
+    else()
+        message(WARNING "The thread library of the system is not the pthreads")
+    endif()
 
     if(CMAKE_SIZEOF_VOID_P EQUAL 8)
         set_property(GLOBAL PROPERTY FIND_LIBRARY_USE_LIB64_PATHS ON)
         message(STATUS "FIND_LIBRARY_USE_LIB64_PATHS = ON")
     endif()
 
-    set(DSN_SYSTEM_LIBS "")
+    set(DSN_SYSTEM_LIBS "") # TODO: remove this
 
     find_package(RT REQUIRED)
     set(DSN_SYSTEM_LIBS ${DSN_SYSTEM_LIBS} ${RT_LIBRARIES})
@@ -271,32 +279,39 @@ function(dsn_setup_system_libs)
     set(DSN_SYSTEM_LIBS ${DSN_SYSTEM_LIBS} ${OPENSSL_CRYPTO_LIBRARY})
 
     if(ENABLE_GPERF)
-        set(DSN_SYSTEM_LIBS ${DSN_SYSTEM_LIBS} tcmalloc_and_profiler)
+        find_library(GREFTOOLS_LIB NAMES libtcmalloc_and_profiler.so PATHS ${DSN_THIRDPARTY_ROOT}/lib NO_DEFAULT_PATH)
+        set(DSN_SYSTEM_LIBS ${DSN_SYSTEM_LIBS} ${GREFTOOLS_LIB})
         add_definitions(-DDSN_ENABLE_GPERF)
     endif()
 
+    find_library(THRIFT_LIB NAMES libthrift.a PATHS ${DSN_THIRDPARTY_ROOT}/lib NO_DEFAULT_PATH) # use thirdparty's thrift libs
+
     set(DSN_SYSTEM_LIBS
         ${DSN_SYSTEM_LIBS}
-        thrift
+        ${THRIFT_LIB} # temporary fix
         ${CMAKE_THREAD_LIBS_INIT} # the thread library found by FindThreads
         CACHE STRING "rDSN system libs" FORCE
     )
 endfunction(dsn_setup_system_libs)
 
-function(dsn_setup_include_path)#TODO: remove
-    include_directories(${DSN_THIRDPARTY_ROOT}/include)
-endfunction(dsn_setup_include_path)
-
-function(dsn_setup_link_path)#TODO: dsn_setup_thirdparty_libs()
+function(dsn_setup_thirdparty_libs)
     set(Boost_USE_MULTITHREADED ON)
     set(Boost_USE_STATIC_LIBS OFF)
     set(Boost_USE_STATIC_RUNTIME OFF)
 
     find_package(Boost COMPONENTS system filesystem regex REQUIRED)
     include_directories(${Boost_INCLUDE_DIRS})
-    
-    link_directories(${DSN_THIRDPARTY_ROOT}/lib)
-endfunction(dsn_setup_link_path)
+
+    find_package(fmt REQUIRED)
+
+    find_library(ZK_MT NAMES zookeeper_mt PATHS ${DSN_THIRDPARTY_ROOT}/lib NO_DEFAULT_PATH)
+    find_library(FDS_LIB NAMES galaxy-fds-sdk-cpp PATHS ${DSN_THIRDPARTY_ROOT}/lib NO_DEFAULT_PATH)
+    find_package(Poco REQUIRED COMPONENTS Net NetSSL JSON Foundation) # no Poco_INCLUDE_DIRS 
+
+    find_package(GTest REQUIRED)# TODO: set NO_DEFAULT_PATH
+
+    include_directories(${DSN_THIRDPARTY_ROOT}/include)
+endfunction(dsn_setup_thirdparty_libs)
 
 function(dsn_common_setup)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D__FILENAME__='\"$(notdir $(abspath $<))\"'")
@@ -323,6 +338,5 @@ function(dsn_common_setup)
 
     dsn_setup_system_libs()
     dsn_setup_compiler_flags()
-    dsn_setup_include_path()
-    dsn_setup_link_path()
+    dsn_setup_thirdparty_libs()
 endfunction(dsn_common_setup)

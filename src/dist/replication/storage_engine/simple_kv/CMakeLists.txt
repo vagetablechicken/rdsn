@@ -11,7 +11,7 @@ set(MY_SRC_SEARCH_MODE "GLOB")
 
 set(MY_PROJ_INC_PATH "")
 
-set(MY_PROJ_LIBS dsn_replica_server dsn_meta_server dsn_replication_client fmt)
+set(MY_PROJ_LIBS dsn_replica_server dsn_meta_server dsn_replication_client fmt::fmt)
 
 set(MY_BOOST_LIBS Boost::system Boost::filesystem)
 

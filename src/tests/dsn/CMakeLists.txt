@@ -9,12 +9,6 @@ set(MY_PROJ_SRC "")
 #  "GLOB" for non-recursive search
 set(MY_SRC_SEARCH_MODE "GLOB")
 
-if (UNIX)
-    set(MY_PROJ_LIBS gtest pthread)
-else()
-    set(MY_PROJ_LIBS gtest)
-endif()
-
 set(MY_PROJ_LIBS 
     dsn_meta_server
     dsn_replica_server
@@ -24,15 +18,16 @@ set(MY_PROJ_LIBS
     dsn.failure_detector.multimaster
     dsn.failure_detector
     dsn.replication.zookeeper_provider
-    zookeeper_mt
-    galaxy-fds-sdk-cpp
-    PocoNet
-    PocoFoundation
-    PocoNetSSL
-    PocoJSON
-    crypto
-    fmt
-    ${MY_PROJ_LIBS}
+    ${ZK_MT}
+    ${FDS_LIB}
+    Poco::Net
+    Poco::Foundation
+    Poco::NetSSL
+    Poco::JSON
+    OpenSSL::Crypto
+    fmt::fmt
+    GTest::GTest
+    Threads::Threads
     )
 
 set(MY_BOOST_LIBS Boost::system Boost::filesystem)

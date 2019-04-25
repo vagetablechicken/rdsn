@@ -18,15 +18,15 @@ set(MY_PROJ_LIBS dsn_meta_server
                  dsn.block_service.local
                  dsn.block_service.fds
                  dsn.failure_detector
-                 zookeeper_mt
-                 galaxy-fds-sdk-cpp
-                 PocoNet
-                 PocoFoundation
-                 PocoNetSSL
-                 PocoJSON
-                 crypto
-                 fmt
-                 gtest)
+                 ${ZK_MT}
+                 ${FDS_LIB}
+                 Poco::Net
+                 Poco::Foundation
+                 Poco::NetSSL
+                 Poco::JSON
+                 OpenSSL::Crypto
+                 fmt::fmt
+                 GTest::GTest)
 
 set(MY_BOOST_LIBS Boost::system Boost::filesystem)
 

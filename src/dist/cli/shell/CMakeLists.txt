@@ -12,7 +12,7 @@ set(MY_SRC_SEARCH_MODE "GLOB")
 set(MY_PROJ_INC_PATH "")
 
 if (UNIX)
-    set(MY_PROJ_LIBS pthread dsn_cli)
+    set(MY_PROJ_LIBS Threads::Threads dsn_cli)
 else()
     set(MY_PROJ_LIBS dsn_cli)
 endif()

@@ -18,13 +18,13 @@ set(MY_PROJ_LIBS
     dsn.failure_detector
     dsn.replication.zookeeper_provider
     dsn_cli
-    zookeeper_mt
-    galaxy-fds-sdk-cpp
-    PocoNet
-    PocoFoundation
-    PocoNetSSL
-    PocoJSON
-    crypto
+    ${ZK_MT}
+    ${FDS_LIB}
+    Poco::Net
+    Poco::Foundation
+    Poco::NetSSL
+    Poco::JSON
+    OpenSSL::Crypto
     )
 
 set(MY_PROJ_LIB_PATH

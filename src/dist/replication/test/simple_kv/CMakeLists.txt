@@ -10,7 +10,7 @@ set(MY_PROJ_SRC ${MY_PROJ_SRC} ../../storage_engine/simple_kv/simple_kv_types.cp
 
 set(MY_PROJ_INC_PATH)
 
-set(MY_PROJ_LIBS gtest
+set(MY_PROJ_LIBS GTest::GTest
                  dsn_runtime
                  dsn_replica_server
                  dsn_meta_server
@@ -21,14 +21,14 @@ set(MY_PROJ_LIBS gtest
                  dsn.failure_detector.multimaster
                  dsn.failure_detector
                  dsn.replication.zookeeper_provider
-                 zookeeper_mt
-                 galaxy-fds-sdk-cpp
-                 PocoNet
-                 PocoFoundation
-                 PocoNetSSL
-                 PocoJSON
-                 crypto
-                 fmt
+                 ${ZK_MT}
+                 ${FDS_LIB}
+                 Poco::Net
+                 Poco::Foundation
+                 Poco::NetSSL
+                 Poco::JSON
+                 OpenSSL::Crypto
+                 fmt::fmt
                  )
 
 set(MY_BOOST_LIBS Boost::system Boost::filesystem)
