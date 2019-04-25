@@ -30,7 +30,7 @@ install:
 
 before_script:
     - cd thirdparty
-    - wget https://raw.githubusercontent.com/xiaomi/pegasus-common/master/pegasus-thirdparty-prebuild.tar.gz
+    - wget https://raw.githubusercontent.com/vagetablechicken/pegasus-common/master/pegasus-thirdparty-prebuild.tar.gz
     - tar xfz pegasus-thirdparty-prebuild.tar.gz
     - rm -f pegasus-thirdparty-prebuild.tar.gz
     - cd ..
