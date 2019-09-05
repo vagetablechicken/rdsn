@@ -304,7 +304,7 @@ fi
 if [ ! -d $TP_OUTPUT/include/prometheus ]; then
     mkdir -p $TP_BUILD/prometheus
     cd $TP_BUILD/prometheus
-    cmake $TP_SRC/prometheus-cpp-0.7.0 -DCMAKE_INSTALL_PREFIX=$TP_OUTPUT -DENABLE_TESTING=OFF
+    cmake $TP_SRC/prometheus-cpp-0.7.0 -DCMAKE_INSTALL_PREFIX=$TP_OUTPUT -DENABLE_TESTING=OFF -DENABLE_PULL=OFF
     make -j8 && make install
     res=$?
     exit_if_fail "prometheus-cpp" $res

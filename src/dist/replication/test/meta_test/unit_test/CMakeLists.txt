@@ -27,9 +27,8 @@ set(MY_PROJ_LIBS
         PocoNet
         PocoFoundation
         PocoNetSSL
-        PocoJSON
-        crypto
-        gtest)
+        gtest
+        )
 
 set(MY_BOOST_LIBS Boost::system Boost::filesystem)
 
