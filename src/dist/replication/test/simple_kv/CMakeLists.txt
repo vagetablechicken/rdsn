@@ -22,7 +22,6 @@ set(MY_PROJ_LIBS dsn_replica_server
                  PocoFoundation
                  PocoNetSSL
                  PocoJSON
-                 crypto
                  gtest
                  )
 

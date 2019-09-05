@@ -29,7 +29,6 @@ set(MY_PROJ_LIBS
     PocoFoundation
     PocoNetSSL
     PocoJSON
-    crypto
     )
 
 # Extra files that will be installed

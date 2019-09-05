@@ -24,8 +24,8 @@ set(MY_PROJ_LIBS dsn_meta_server
                  PocoFoundation
                  PocoNetSSL
                  PocoJSON
-                 crypto
-                 gtest)
+                 gtest
+                 )
 
 set(MY_BOOST_LIBS Boost::system Boost::filesystem Boost::regex)
 

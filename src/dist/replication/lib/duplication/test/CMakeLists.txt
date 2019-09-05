@@ -17,7 +17,6 @@ set(MY_PROJ_LIBS dsn_meta_server
         PocoFoundation
         PocoNetSSL
         PocoJSON
-        crypto
         gtest
 )
 

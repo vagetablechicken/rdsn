@@ -244,16 +244,6 @@ check_and_download "${GFLAGS_PKG}"\
     "${GFLAGS_NAME}"
 exit_if_fail $?
 
-# civetweb
-# from: https://codeload.github.com/civetweb/civetweb/tar.gz/v1.11
-CIVETWEB_NAME=civetweb-1.11
-CIVETWEB_PKG=${CIVETWEB_NAME}.tar.gz
-check_and_download "${CIVETWEB_PKG}"\
-    "${OSS_URL_PREFIX}/${CIVETWEB_PKG}"\
-    "b6d2175650a27924bccb747cbe084cd4"\
-    "${CIVETWEB_NAME}"
-exit_if_fail $?
-
 # prometheus-cpp
 # from: https://codeload.github.com/jupp0r/prometheus-cpp/tar.gz/v0.7.0
 PROMETHEUS_NAME=prometheus-cpp-0.7.0
