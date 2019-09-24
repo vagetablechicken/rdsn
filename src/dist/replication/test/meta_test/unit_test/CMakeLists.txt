@@ -23,10 +23,8 @@ set(MY_PROJ_LIBS
         dsn_http
         dsn_runtime
         zookeeper_mt
-        galaxy-fds-sdk-cpp
-        PocoNet
-        PocoFoundation
-        PocoNetSSL
+        ${FDS_LIB}
+        Poco::NetSSL
         gtest
         )
 

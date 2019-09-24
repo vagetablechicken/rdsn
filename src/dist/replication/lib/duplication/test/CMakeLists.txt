@@ -12,11 +12,6 @@ set(MY_PROJ_LIBS dsn_meta_server
         dsn.block_service.fds
         dsn.failure_detector
         zookeeper_mt
-        galaxy-fds-sdk-cpp
-        PocoNet
-        PocoFoundation
-        PocoNetSSL
-        PocoJSON
         gtest
 )
 

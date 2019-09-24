@@ -274,15 +274,24 @@ function(dsn_setup_thirdparty_libs)
     find_package(Boost COMPONENTS system filesystem regex REQUIRED)
     include_directories(${Boost_INCLUDE_DIRS})
 
-    find_library(THRIFT_LIB NAMES libthrift.a PATHS ${DSN_THIRDPARTY_ROOT}/lib NO_DEFAULT_PATH)
+    set(DSN_THIRDPARTY_LIB_PATHS "${DSN_THIRDPARTY_ROOT}/lib64" "${DSN_THIRDPARTY_ROOT}/lib")
+
+    find_library(THRIFT_LIB NAMES libthrift.a PATHS ${DSN_THIRDPARTY_LIB_PATHS} NO_DEFAULT_PATH)
     if(NOT THRIFT_LIB)
-        message(FATAL_ERROR "thrift library not found in ${DSN_THIRDPARTY_ROOT}/lib")
+        message(FATAL_ERROR "thrift library not found in ${DSN_THIRDPARTY_LIB_PATHS}")
     endif()
     find_package(fmt REQUIRED)
     set(DEFAULT_THIRDPARTY_LIBS ${THRIFT_LIB} fmt::fmt CACHE STRING "default thirdparty libs" FORCE)
 
-    link_directories(${DSN_THIRDPARTY_ROOT}/lib)
+    link_directories(${DSN_THIRDPARTY_ROOT}/lib) # TODO(huangwei5): remove this
     link_directories(${DSN_THIRDPARTY_ROOT}/lib64)
+
+    find_library(FDS_LIB NAMES libgalaxy-fds-sdk-cpp.a PATHS ${DSN_THIRDPARTY_LIB_PATHS} NO_DEFAULT_PATH)
+    if(NOT FDS_LIB)
+        message(FATAL_ERROR "fds library not found in ${DSN_THIRDPARTY_LIB_PATHS}")
+    endif()
+    message(STATUS "Finding Poco libraries required by fds")
+    find_package(Poco QUIET REQUIRED COMPONENTS NetSSL) # no Poco_INCLUDE_DIRS
 endfunction(dsn_setup_thirdparty_libs)
 
 function(dsn_common_setup)

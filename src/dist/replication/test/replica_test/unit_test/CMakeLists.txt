@@ -19,11 +19,6 @@ set(MY_PROJ_LIBS dsn_meta_server
                  dsn_http
                  dsn_runtime
                  zookeeper_mt
-                 galaxy-fds-sdk-cpp
-                 PocoNet
-                 PocoFoundation
-                 PocoNetSSL
-                 PocoJSON
                  gtest
                  )
 
