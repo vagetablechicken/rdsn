@@ -79,6 +79,7 @@ public:
     {
         std::string r = ::dsn::task::get_current_worker()->name();
         replier(r);
+        ddebug("here");
     }
 
     void on_rpc_string_test(dsn::message_ex *message)

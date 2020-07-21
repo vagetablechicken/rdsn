@@ -110,6 +110,7 @@ DSN_API void dsn_rpc_call(dsn::rpc_address server, dsn::rpc_response_task *rpc_c
 
     auto msg = rpc_call->get_request();
     msg->server_address = server;
+    ddebug("client send rpc %s", rpc_call->code().to_string());
     ::dsn::task::get_current_rpc()->call(msg, dsn::rpc_response_task_ptr(rpc_call));
 }
 
