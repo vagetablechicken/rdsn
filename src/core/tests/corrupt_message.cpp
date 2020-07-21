@@ -18,8 +18,9 @@ TEST(core, corrupt_message)
 
     auto result = ::dsn::rpc::call_wait<std::string>(
         server, RPC_TEST_HASH1, req, std::chrono::milliseconds(0), 1);
+    std::cout << "test1" << std::endl;
     ASSERT_EQ(result.first, ERR_TIMEOUT);
-
+    std::cout << "test2" << std::endl;
     result = ::dsn::rpc::call_wait<std::string>(
         server, RPC_TEST_HASH2, req, std::chrono::milliseconds(0), 1);
     ASSERT_EQ(result.first, ERR_TIMEOUT);
